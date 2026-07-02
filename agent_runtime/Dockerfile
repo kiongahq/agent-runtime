@@ -9,6 +9,7 @@ COPY python/pyproject.toml python/pyproject.toml
 COPY python/mlaiops_sdk python/mlaiops_sdk
 COPY python/agent_runtime python/agent_runtime
 COPY python/agents python/agents
+COPY python/features python/features
 
 RUN pip install --no-cache-dir "./python[runtime]"
 
