@@ -1,0 +1,5 @@
+{"id": "billing-date", "user_id": "u123", "question": "When are invoices issued?", "expected": "Invoices are issued on the 1st of each month."}
+{"id": "retention-pro", "user_id": "u123", "question": "How long are my pipeline logs kept? I am on the pro plan.", "expected": "Pipeline logs are retained for 365 days on the pro plan."}
+{"id": "retention-free", "user_id": "u456", "question": "How long do you keep pipeline logs on the free plan?", "expected": "Pipeline logs are retained for 30 days on the free plan."}
+{"id": "sla-pro", "user_id": "u123", "question": "What is the support response time for my plan?", "expected": "The customer is on the pro plan, so support responds within 4 business hours."}
+{"id": "profile-lookup", "user_id": "u123", "question": "How many open tickets do I have right now?", "expected": "The customer u123 has 1 open ticket."}
