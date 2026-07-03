@@ -78,23 +78,37 @@ def report_stats(stats: Stats, demo: str, *, client: httpx.Client) -> None:
 def run_forever() -> None:  # pragma: no cover - long-running loop
     rest = KafkaRest()
     client = httpx.Client(timeout=30)
-    consumer = Consumer(rest, group="mlaiops-realtime", topics=list(TOPIC_HANDLERS))
-    print(f"realtime processor consuming {list(TOPIC_HANDLERS)}")
+    consumer: Consumer | None = None
     try:
         while True:
-            for record in consumer.poll(timeout_ms=2000):
-                topic, value = record.get("topic", ""), record.get("value", {})
-                if topic not in TOPIC_HANDLERS or not isinstance(value, dict):
-                    continue
-                started = time.perf_counter()
-                demo, out_topic, result = process_event(topic, value, client=client)
-                latency_ms = (time.perf_counter() - started) * 1000
-                rest.produce(out_topic, result)
-                _stats.record(demo, latency_ms, flagged=bool(result.get("flagged")))
-                report_stats(_stats, demo, client=client)
-            time.sleep(0.2)
+            # A transient REST-proxy timeout (common during group rebalances)
+            # must not kill the service: dying leaks a consumer instance,
+            # which forces another rebalance on restart — a crash loop.
+            # Recreate the consumer and keep going instead.
+            try:
+                if consumer is None:
+                    consumer = Consumer(rest, group="mlaiops-realtime", topics=list(TOPIC_HANDLERS))
+                    print(f"realtime processor consuming {list(TOPIC_HANDLERS)}")
+                for record in consumer.poll(timeout_ms=2000):
+                    topic, value = record.get("topic", ""), record.get("value", {})
+                    if topic not in TOPIC_HANDLERS or not isinstance(value, dict):
+                        continue
+                    started = time.perf_counter()
+                    demo, out_topic, result = process_event(topic, value, client=client)
+                    latency_ms = (time.perf_counter() - started) * 1000
+                    rest.produce(out_topic, result)
+                    _stats.record(demo, latency_ms, flagged=bool(result.get("flagged")))
+                    report_stats(_stats, demo, client=client)
+                time.sleep(0.2)
+            except httpx.HTTPError as error:
+                print(f"kafka poll failed ({error}); recreating consumer")
+                if consumer is not None:
+                    consumer.close()
+                    consumer = None
+                time.sleep(3)
     finally:
-        consumer.close()
+        if consumer is not None:
+            consumer.close()
 
 
 _stats = Stats()
