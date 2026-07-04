@@ -15,5 +15,5 @@ MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
   python -m pytest python/agent_runtime/evals -q
 ```
 
-Scores should also be pushed to MLflow/Langfuse per PRD section 4.4.4 when the
+Scores should also be pushed to MLflow/Langfuse when the
 stack is up (the eval harness prints per-case scores for that pipeline step).

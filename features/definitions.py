@@ -1,4 +1,4 @@
-"""Version-controlled feature view definitions (PRD section 3.5).
+"""Version-controlled feature view definitions.
 
 Definitions are declarative data: the materializer applies them to the
 control plane and computes rows deterministically. Real deployments replace
