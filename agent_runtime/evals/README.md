@@ -15,5 +15,8 @@ MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
   python -m pytest python/agent_runtime/evals -q
 ```
 
-Scores should also be pushed to MLflow/Langfuse when the
-stack is up (the eval harness prints per-case scores for that pipeline step).
+The harness prints per-case scores. Production quality gates should additionally
+record the dataset version, agent image, graph module, prompt/model version, Git
+commit, and aggregate scores in MLflow or Langfuse so promotion decisions are
+reproducible. Never run paid evals from an untrusted pull request with provider
+secrets exposed.

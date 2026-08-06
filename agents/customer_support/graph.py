@@ -21,7 +21,7 @@ from langgraph.prebuilt import ToolNode
 from mlaiops_sdk.tools import langchain_tools, register_tool
 
 SYSTEM_PROMPT = (
-    "You are Nexus customer support. Use feature_store_lookup to fetch the "
+    "You are Kionga customer support. Use feature_store_lookup to fetch the "
     "customer's live profile before answering account questions, and kb_search "
     "to ground answers in the knowledge base. Answer concisely."
 )

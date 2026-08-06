@@ -1,4 +1,4 @@
-"""Kafka access through the Kafka REST Proxy (Confluent v2 contract).
+"""Kafka access through Karapace's Confluent-v2-compatible REST contract.
 
 The platform already runs kafka-rest for the Go services; using the same
 door here keeps the Python side dependency-free (httpx only) and identical

@@ -1,7 +1,7 @@
 # agent-runtime
 
 Serves a compiled LangGraph agent over HTTP. This is the container a
-`NexusAgent` runs in production and the `agent-runtime` Compose service
+`KiongaAgent` runs in production and the `agent-runtime` Compose service
 locally.
 
 ## Contract
@@ -14,6 +14,8 @@ locally.
 
 Every turn reports a session summary to the gateway (`POST /api/v1/traces`),
 which upserts the live session (turns, tokens, cost) shown in the console.
+The gateway attributes these reports to the narrow internal `service` role when
+`MLAIOPS_INTERNAL_TOKEN` is configured; do not reuse a user personal key.
 
 ## Configuration
 
@@ -22,6 +24,7 @@ which upserts the live session (turns, tokens, cost) shown in the console.
 | `MLAIOPS_GRAPH_MODULE` | `package.module:attribute` — compiled graph, `StateGraph`, or `build(model, checkpointer)` factory |
 | `MLAIOPS_AGENT_ID` / `MLAIOPS_AGENT_NAME` | Control-plane identity for session reporting |
 | `MLAIOPS_URL` | Gateway base URL for session reporting |
+| `MLAIOPS_INTERNAL_TOKEN` | Narrow service credential for hosted session reporting |
 | `DATABASE_URL` or `MLAIOPS_CHECKPOINT_DSN` | Enables the PostgreSQL LangGraph checkpointer (in-memory otherwise) |
 | `MLAIOPS_LLM_BACKEND` / `MLAIOPS_LLM_MODEL` / `MLAIOPS_LLM_BASE_URL` | Chat model selection (`openai`, `anthropic`, `openai-compatible`, `mock`) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | Full-trace delivery to Langfuse |
@@ -30,6 +33,11 @@ which upserts the live session (turns, tokens, cost) shown in the console.
 LLM calls should egress through the platform trace-proxy: set
 `MLAIOPS_LLM_BASE_URL` (or `OPENAI_BASE_URL`) to the proxy address so every
 request/response pair is captured.
+
+Session checkpoints and long-term memory are separate: checkpoints preserve graph
+thread state, while `AgentMemoryClient` stores tenant/agent/user-scoped semantic
+memories in pgvector. Keep project/user identifiers in runtime context when serving
+multiple teams.
 
 ## Run locally
 
