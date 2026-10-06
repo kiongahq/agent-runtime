@@ -1,7 +1,8 @@
-# Agent runtime image: serves any platform-registered LangGraph agent.
+# Agent runtime image: serves a LangGraph or marked framework adapter factory.
 # Build from the repository root:
 #   docker build -f python/agent_runtime/Dockerfile -t mlaiops/agent-runtime .
-FROM python:3.11-slim
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim
 
 WORKDIR /app
 
@@ -12,7 +13,8 @@ COPY python/agents python/agents
 COPY python/features python/features
 COPY python/realtime python/realtime
 
-RUN pip install --no-cache-dir "./python[runtime]"
+ARG SDK_EXTRAS=runtime
+RUN pip install --no-cache-dir "./python[${SDK_EXTRAS}]"
 
 ENV PYTHONPATH=/app/python \
     MLAIOPS_RUNTIME_PORT=9000

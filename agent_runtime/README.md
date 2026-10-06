@@ -1,6 +1,8 @@
 # agent-runtime
 
-Serves a compiled LangGraph agent over HTTP. This is the container a
+Serves a compiled LangGraph agent or a marked Agno/NOOA/custom adapter over HTTP.
+See [framework integration](../../docs/guides/agent-frameworks.md) for packaging,
+provider ownership, buffered streaming, and NOOA safety requirements. This is the container a
 `KiongaAgent` runs in production and the `agent-runtime` Compose service
 locally.
 
@@ -9,7 +11,7 @@ locally.
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /healthz` | Liveness + agent identity |
-| `POST /invoke` | One agent turn: `{message, session_id?, user_id?}` → reply + exact token usage |
+| `POST /invoke` | One agent turn: `{message, session_id?, user_id?}` → reply + usage counters and `usage_available` |
 | `POST /stream` | Same turn as Server-Sent Events (`{"delta": ...}` chunks, final `{"done": true, ...}` summary) |
 
 Every turn reports a session summary to the gateway (`POST /api/v1/traces`),
