@@ -85,6 +85,7 @@ def analyze_transcript(event: dict[str, Any], *, client: httpx.Client) -> dict[s
     if gateway and agent_id:
         response = client.post(
             f"{gateway.rstrip('/')}/api/v1/agents/{agent_id}/invoke",
+            headers={"Authorization": f"Bearer {os.environ['MLAIOPS_TOKEN']}"} if os.environ.get("MLAIOPS_TOKEN") else {},
             json={
                 "message": "Summarize sentiment and intent in one line: " + transcript,
                 "session_id": str(event.get("session_id", "")),

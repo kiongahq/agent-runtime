@@ -68,7 +68,7 @@ def report_stats(stats: Stats, demo: str, *, client: httpx.Client) -> None:
         client.post(
             f"{gateway.rstrip('/')}/api/v1/realtime/{demo}",
             json=stats.snapshot(demo),
-            headers={"X-MLAIOps-Actor": "realtime-processor"},
+            headers={"X-MLAIOps-Actor": "realtime-processor", **({"Authorization": f"Bearer {os.environ['MLAIOPS_TOKEN']}"} if os.environ.get("MLAIOPS_TOKEN") else {})},
             timeout=5,
         )
     except httpx.HTTPError:
