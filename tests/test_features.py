@@ -58,7 +58,7 @@ def test_materializer_full_flow():
     online_writes = [path for method, path in calls if method == "PUT" and "/internal/v1/features/" in path]
     assert len(online_writes) == 6
     assert ("PUT", "/internal/v1/features/customer_profile/entity_id=u123") in calls
-    reports = [path for method, path in calls if path.endswith("/materialized")]
+    reports = [path for method, path in calls if path.endswith("/materializations")]
     assert len(reports) == len(FEATURE_VIEWS)
     snapshots = [path for method, path in calls if path == "/presign"]
     assert len(snapshots) == len(FEATURE_VIEWS)

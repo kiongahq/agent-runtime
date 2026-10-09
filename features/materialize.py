@@ -7,7 +7,10 @@ For every feature view definition it:
    (``PUT /internal/v1/features/{view}/{entity}``),
 3. uploads an offline snapshot to the object store via a storage-proxy
    presigned URL (Parquet when pyarrow is available, JSONL otherwise),
-4. reports the materialized entity count back to the control plane.
+4. reports lineage to the control plane (``POST /api/v1/features/{view}/
+   materializations``): run id, source dataset, offline snapshot URI and the
+   entity count, or the failure that stopped the run. Older gateways without
+   that endpoint get the plain ``/materialized`` count report instead.
 
 Runs as a container, a cron job, or ``python -m features.materialize``.
 Everything here is deterministic: same definitions, same rows, same result.
@@ -19,6 +22,7 @@ import io
 import json
 import os
 import sys
+import uuid
 from typing import Any
 
 import httpx
@@ -46,6 +50,7 @@ class Materializer:
         ).rstrip("/")
         self.internal_token = internal_token or os.environ.get("MLAIOPS_INTERNAL_TOKEN", "")
         self.client = client or httpx.Client(timeout=10)
+        self.run_id = f"mat-{uuid.uuid4().hex[:12]}"
 
     def _headers(self) -> dict[str, str]:
         headers = {"X-MLAIOps-Actor": "materializer"}
@@ -61,26 +66,55 @@ class Materializer:
             response.raise_for_status()
 
     def materialize_view(self, view: dict[str, Any]) -> int:
-        rows = source_rows(view["name"])
-        entity_key = view["entity"]
-        for row in rows:
-            entity_value = row[entity_key]
-            values = {name: value for name, value in row.items() if name != entity_key}
-            response = self.client.put(
-                f"{self.feature_gateway_url}/internal/v1/features/{view['name']}"
-                f"/{entity_key}={entity_value}",
-                json=values,
+        try:
+            rows = source_rows(view["name"])
+            entity_key = view["entity"]
+            for row in rows:
+                entity_value = row[entity_key]
+                values = {name: value for name, value in row.items() if name != entity_key}
+                response = self.client.put(
+                    f"{self.feature_gateway_url}/internal/v1/features/{view['name']}"
+                    f"/{entity_key}={entity_value}",
+                    json=values,
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+            offline_uri = self._write_offline_snapshot(view["name"], rows)
+        except Exception as error:
+            self._report(view, status="failed", entity_count=0, error=str(error)[:2000])
+            raise
+        self._report(view, status="succeeded", entity_count=len(rows), offline_uri=offline_uri)
+        return len(rows)
+
+    def _report(self, view: dict[str, Any], *, status: str, entity_count: int, offline_uri: str = "", error: str = "") -> None:
+        """Record lineage. A failure to report a failure never hides the
+        original error, so failed reports are best effort."""
+        payload = {
+            "run_id": self.run_id,
+            "source_dataset": view.get("source") or f"definitions:{view['name']}",
+            "entity_count": entity_count,
+            "status": status,
+        }
+        if offline_uri:
+            payload["offline_uri"] = offline_uri
+        if error:
+            payload["error"] = error
+        try:
+            response = self.client.post(
+                f"{self.gateway_url}/api/v1/features/{view['name']}/materializations",
+                json=payload,
                 headers=self._headers(),
             )
+            if response.status_code in (404, 405) and status == "succeeded":
+                response = self.client.post(
+                    f"{self.gateway_url}/api/v1/features/{view['name']}/materialized",
+                    json={"entity_count": entity_count},
+                    headers=self._headers(),
+                )
             response.raise_for_status()
-        self._write_offline_snapshot(view["name"], rows)
-        report = self.client.post(
-            f"{self.gateway_url}/api/v1/features/{view['name']}/materialized",
-            json={"entity_count": len(rows)},
-            headers=self._headers(),
-        )
-        report.raise_for_status()
-        return len(rows)
+        except httpx.HTTPError:
+            if status == "succeeded":
+                raise
 
     def _snapshot_bytes(self, rows: list[dict[str, Any]]) -> tuple[bytes, str]:
         try:
@@ -95,12 +129,12 @@ class Materializer:
             lines = "\n".join(json.dumps(row, sort_keys=True) for row in rows)
             return lines.encode(), "jsonl"
 
-    def _write_offline_snapshot(self, view_name: str, rows: list[dict[str, Any]]) -> None:
+    def _write_offline_snapshot(self, view_name: str, rows: list[dict[str, Any]]) -> str:
         """Upload the offline snapshot through a presigned URL. Skipped (not
         failed) when no storage proxy is configured, so online materialization
         still works on minimal stacks."""
         if not self.storage_proxy_url:
-            return
+            return ""
         content, extension = self._snapshot_bytes(rows)
         presign = self.client.post(
             f"{self.storage_proxy_url}/presign",
@@ -115,6 +149,7 @@ class Materializer:
         presign.raise_for_status()
         upload = self.client.put(presign.json()["url"], content=content)
         upload.raise_for_status()
+        return f"s3://mlaiops-features/{view_name}/snapshot.{extension}"
 
     def run(self) -> dict[str, int]:
         self.apply_definitions()
