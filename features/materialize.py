@@ -22,6 +22,7 @@ import io
 import json
 import os
 import sys
+import time
 import uuid
 from typing import Any
 
@@ -151,7 +152,39 @@ class Materializer:
         upload.raise_for_status()
         return f"s3://mlaiops-features/{view_name}/snapshot.{extension}"
 
+    def dependency_health_urls(self) -> list[str]:
+        urls = [f"{self.gateway_url}/api/v1/health", f"{self.feature_gateway_url}/healthz"]
+        if self.storage_proxy_url:
+            urls.append(f"{self.storage_proxy_url}/healthz")
+        return urls
+
+    def wait_for_dependencies(self, timeout: float = 120.0, sleep=time.sleep, clock=time.monotonic) -> None:
+        """Block until every dependency answers its health check.
+
+        The job runs once at stack start, often before the gateway listens.
+        Only connection errors are retried (with backoff, until `timeout`):
+        any HTTP answer means the service is up, so real errors still fail
+        closed in the calls that follow.
+        """
+        deadline = clock() + timeout
+        pending, delay = self.dependency_health_urls(), 0.5
+        while True:
+            still = []
+            for url in pending:
+                try:
+                    self.client.get(url)
+                except httpx.TransportError:
+                    still.append(url)
+            if not still:
+                return
+            if clock() >= deadline:
+                raise TimeoutError(f"dependencies not ready after {timeout:.0f}s: {', '.join(still)}")
+            pending = still
+            sleep(delay)
+            delay = min(delay * 2, 5.0)
+
     def run(self) -> dict[str, int]:
+        self.wait_for_dependencies(float(os.environ.get("MLAIOPS_DEPENDENCY_TIMEOUT_SECONDS", "120")))
         self.apply_definitions()
         return {view["name"]: self.materialize_view(view) for view in FEATURE_VIEWS}
 

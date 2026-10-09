@@ -87,3 +87,41 @@ def test_materializer_fails_closed_on_gateway_error():
     )
     with pytest.raises(httpx.HTTPStatusError):
         materializer.run()
+
+
+def test_materializer_waits_for_dependencies_then_runs():
+    """Regression: at stack start the job ran before the gateway listened and
+    exited with "connection refused". It now retries until every dependency
+    accepts connections."""
+    refusals = {"gateway": 2}
+
+    def handler(request):
+        host = request.url.host
+        if refusals.get(host, 0) > 0:
+            refusals[host] -= 1
+            raise httpx.ConnectError("refused", request=request)
+        return httpx.Response(200, json={"status": "ok"})
+
+    sleeps = []
+    materializer = Materializer(gateway_url="http://gateway", feature_gateway_url="http://features",
+                                storage_proxy_url="http://storage",
+                                client=httpx.Client(transport=httpx.MockTransport(handler)))
+    materializer.wait_for_dependencies(timeout=60, sleep=sleeps.append)
+    assert sleeps == [0.5, 1.0]
+    assert materializer.dependency_health_urls() == [
+        "http://gateway/api/v1/health", "http://features/healthz", "http://storage/healthz"]
+
+
+def test_materializer_reports_dependencies_that_never_become_ready():
+    def handler(request):
+        if request.url.host == "features":
+            raise httpx.ConnectError("refused", request=request)
+        return httpx.Response(200)
+
+    now = [0.0]
+    materializer = Materializer(gateway_url="http://gateway", feature_gateway_url="http://features",
+                                storage_proxy_url="",
+                                client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(TimeoutError, match="http://features/healthz"):
+        materializer.wait_for_dependencies(
+            timeout=10, sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
