@@ -1,3 +1,26 @@
 __pycache__/
 .pytest_cache/
 .venv/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage*
+htmlcov/
+build/
+dist/
+*.egg-info/
+.ipynb_checkpoints/
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local coding-assistant state; product agent code is intentionally tracked.
+.claude/
+.codex/
+.cursor/
+.aider*
