@@ -1,7 +1,7 @@
 # agent-runtime
 
 Serves a compiled LangGraph agent or a marked Agno/NOOA/custom adapter over HTTP.
-See [framework integration](../../docs/guides/agent-frameworks.md) for packaging,
+See [framework integration](https://kiongahq.github.io/docs/guides/agent-frameworks/) for packaging,
 provider ownership, buffered streaming, and NOOA safety requirements. This is the container a
 `KiongaAgent` runs in production and the `agent-runtime` Compose service
 locally.

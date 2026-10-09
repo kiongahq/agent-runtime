@@ -1,0 +1,18 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  python:
+    uses: kiongahq/.github/.github/workflows/python.yml@main
+    with:
+      install: pip install -r requirements-dev.txt
+  image:
+    needs: python
+    uses: kiongahq/.github/.github/workflows/image.yml@main
+    permissions: {contents: read, packages: write}
+    with: {image: agent-runtime}

@@ -1,0 +1,4 @@
+# The SDK release this runtime is built against (keep in step with SDK_VERSION
+# in the Dockerfile). For a sibling checkout instead:
+#   pip install -e "../sdk-python[runtime,dev]"
+mlaiops-sdk[runtime,dev] @ https://github.com/kiongahq/sdk-python/archive/refs/tags/v0.2.0.tar.gz
