@@ -12,7 +12,7 @@ from .app import create_app
 def main() -> None:
     uvicorn.run(
         create_app(),
-        host=os.environ.get("MLAIOPS_RUNTIME_HOST", "0.0.0.0"),
+        host=os.environ.get("MLAIOPS_RUNTIME_HOST", "0.0.0.0"),  # nosec B104 - container listener
         port=int(os.environ.get("MLAIOPS_RUNTIME_PORT", "9000")),
         log_level="info",
     )
