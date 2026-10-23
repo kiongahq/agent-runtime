@@ -1,39 +1,67 @@
 # agent-runtime
 
-The runtime that serves [Kionga](https://github.com/kiongahq) agents, plus the
-Python workers that share its image.
+[![CI](https://github.com/kiongahq/agent-runtime/actions/workflows/ci.yml/badge.svg)](https://github.com/kiongahq/agent-runtime/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENCE)
 
-| Package | Runs as | Purpose |
-| --- | --- | --- |
-| [`agent_runtime`](agent_runtime/README.md) | `agent-runtime` service, one container per deployed agent | Serves a LangGraph agent, or an Agno/NOOA/custom adapter, over HTTP (`/invoke`, `/stream`); checkpoints, memory, session reporting and Langfuse traces; agent evals |
-| `agents` | loaded by `agent_runtime` | Example agents (customer support) and framework examples |
-| `features` | `feature-materializer` job | Materializes feature definitions to the online store; point-in-time joins; TTL/retention sweeps |
-| `realtime` | `realtime-processor` service | Kafka stream processing demos (fraud, call center, recommendations) |
+Serves Kionga AI agents over HTTP, and runs the feature materializer and the real-time processor.
 
-All four depend on the [Python SDK](https://github.com/kiongahq/sdk-python). The image
-is `ghcr.io/kiongahq/agent-runtime`; the default entrypoint is `python -m agent_runtime`,
-and the other workers override it (`python -m features.materialize`,
-`python -m realtime.service`). The [deploy](https://github.com/kiongahq/deploy) repo
-wires all three.
+## Background
 
-## Build
+Kionga is a self-hosted platform for machine learning, data and AI agents. When
+you deploy an agent, it runs in this runtime: a FastAPI service that loads your
+LangGraph graph (or an Agno, NOOA or custom adapter), answers each turn over HTTP,
+keeps session checkpoints, and reports turns, tokens and cost to the Kionga
+gateway so you see them in the console.
 
-```bash
-# SDK from its tagged release (what CI publishes)
-docker build -t ghcr.io/kiongahq/agent-runtime .
+The same image, `ghcr.io/kiongahq/agent-runtime`, also runs two platform workers:
+the feature materializer, which loads feature views into the online and offline
+stores, and the real-time processor, which scores Kafka events with online
+features. All of them build on the [Python SDK](https://github.com/kiongahq/sdk-python).
 
-# SDK from a sibling checkout, for changes that span both repos
-docker build --build-arg SDK_SOURCE=local --build-context sdk=../sdk-python \
-  -t ghcr.io/kiongahq/agent-runtime:dev .
-```
-
-`SDK_VERSION` in the Dockerfile and the pin in `requirements-dev.txt` name the SDK
-release this runtime is tested against; bump both together.
-
-## Develop
+## Install
 
 ```bash
-python -m venv .venv && . .venv/bin/activate
-pip install -r requirements-dev.txt          # or: pip install -e "../sdk-python[runtime,dev]"
-python -m pytest -q && ruff check .
+git clone git@github.com:kiongahq/agent-runtime.git
+cd agent-runtime
+docker build -t ghcr.io/kiongahq/agent-runtime:dev .
 ```
+
+For local development without Docker, install the dependencies with
+`pip install -r requirements-dev.txt` (Python 3.11).
+
+## Usage
+
+Serve the example customer support agent with the deterministic mock LLM:
+
+```bash
+MLAIOPS_GRAPH_MODULE=agents.customer_support.graph:build \
+MLAIOPS_LLM_BACKEND=mock \
+python -m agent_runtime                       # listens on :9000
+
+curl -X POST http://localhost:9000/invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "What plan is customer C-1001 on?", "session_id": "demo-1"}'
+```
+
+The response holds the reply, the session ID, token counts, cost and duration.
+`POST /stream` returns the same turn as Server-Sent Events, and `GET /healthz`
+reports the agent's identity. The workers start with
+`python -m features.materialize` and `python -m realtime.service`.
+
+## Documentation
+
+- Product documentation: [Build agents](https://kiongahq.github.io/docs/guides/agents/),
+  [Agent frameworks](https://kiongahq.github.io/docs/guides/agent-frameworks/),
+  [Features](https://kiongahq.github.io/docs/guides/features/) and
+  [Real-time processing](https://kiongahq.github.io/docs/guides/realtime/)
+- Engineering handbook: [AI and observability](https://kiongahq.github.io/docs/engineering/components/ai-observability/)
+- How this repository is laid out: [ARCHITECTURE.md](ARCHITECTURE.md)
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the checks CI
+runs, agent evals and the commit conventions.
+
+## License
+
+[MIT](LICENCE) © Kionga contributors
