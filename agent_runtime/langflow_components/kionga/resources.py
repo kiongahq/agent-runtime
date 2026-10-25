@@ -5,6 +5,7 @@ Neither a Kionga API token nor a model/provider secret enters a flow definition.
 """
 
 import json
+import math
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -171,3 +172,86 @@ class KiongaTools(Component):
             {key: item.get(key) for key in ("name", "version", "description", "input_schema", "status")}
             for item in items
         ]})
+
+
+def embedding_vector(raw: str) -> list[float]:
+    try:
+        vector = json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise ValueError("Provide an embedding as a JSON array of numbers") from error
+    if not isinstance(vector, list) or not vector or len(vector) > 4096:
+        raise ValueError("Provide an embedding as a JSON array of 1–4096 numbers")
+    if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) for value in vector):
+        raise ValueError("Every embedding value must be a number")
+    return vector
+
+
+class KiongaKnowledgeBases(Component):
+    display_name = "Kionga Knowledge Bases"
+    description = "Discover project-authorized Qdrant and pgvector knowledge bases without connection secrets."
+    name = "KiongaKnowledgeBases"
+    icon = "Database"
+    inputs = []
+    outputs = [Output(name="knowledge_bases", display_name="Knowledge Bases", method="list_bases")]
+
+    def list_bases(self) -> Data:
+        return Data(data={"knowledge_bases": request("/knowledge-bases").get("items", [])})
+
+
+class KiongaKnowledgeSearch(Component):
+    display_name = "Kionga Knowledge Search"
+    description = "Search a Kionga knowledge base with a JSON embedding from the matching model."
+    name = "KiongaKnowledgeSearch"
+    icon = "Search"
+    inputs = [
+        BoolInput(name="refresh_bases", display_name="Refresh knowledge bases", value=False, real_time_refresh=True),
+        DropdownInput(name="knowledge_base_id", display_name="Knowledge base", options=[], required=True, combobox=True),
+        MessageTextInput(name="embedding_json", display_name="Embedding JSON", required=True),
+        StrInput(name="limit", display_name="Maximum matches", value="5"),
+    ]
+    outputs = [Output(name="matches", display_name="Matches", method="search")]
+
+    def update_build_config(self, build_config, field_value, field_name=None):
+        if field_name == "refresh_bases":
+            try:
+                build_config["knowledge_base_id"]["options"] = [
+                    item["id"] for item in request("/knowledge-bases").get("items", [])
+                ]
+            except ValueError:
+                build_config["knowledge_base_id"]["options"] = []
+        return build_config
+
+    def search(self) -> Data:
+        base_id = urllib.parse.quote(self.knowledge_base_id, safe="")
+        try:
+            limit = int(self.limit)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Maximum matches must be a number from 1 to 20") from error
+        if not 1 <= limit <= 20:
+            raise ValueError("Maximum matches must be a number from 1 to 20")
+        result = request(
+            f"/knowledge-bases/{base_id}/search",
+            {"vector": embedding_vector(self.embedding_json), "limit": limit},
+        )
+        return Data(data={"matches": result.get("items", [])})
+
+
+class KiongaKnowledgeChunk(Component):
+    display_name = "Kionga Knowledge Chunk"
+    description = "Add text and a matching JSON embedding to an authorized Qdrant or pgvector knowledge base."
+    name = "KiongaKnowledgeChunk"
+    icon = "FileText"
+    inputs = [
+        StrInput(name="knowledge_base_id", display_name="Knowledge base ID", required=True),
+        MessageTextInput(name="text", display_name="Text", required=True),
+        MessageTextInput(name="embedding_json", display_name="Embedding JSON", required=True),
+    ]
+    outputs = [Output(name="chunk", display_name="Chunk", method="add_chunk")]
+
+    def add_chunk(self) -> Data:
+        base_id = urllib.parse.quote(self.knowledge_base_id, safe="")
+        result = request(
+            f"/knowledge-bases/{base_id}/chunks",
+            {"text": self.text, "vector": embedding_vector(self.embedding_json)},
+        )
+        return Data(data=result)
