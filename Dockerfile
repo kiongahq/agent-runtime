@@ -34,7 +34,7 @@ RUN case "$SDK_SOURCE" in \
 # smaller dependency set; exported 1.13.x flows run with matching LFX 1.13.x.
 ARG RUNTIME_FLAVOR=standard
 ARG LFX_VERSION=1.13.0
-ARG LFX_PROVIDER_VERSION=0.2.1
+ARG LFX_PROVIDER_VERSION=0.2.0
 RUN case "$RUNTIME_FLAVOR" in \
       standard) ;; \
       langflow) pip install --no-cache-dir \
