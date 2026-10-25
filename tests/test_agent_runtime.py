@@ -134,6 +134,28 @@ def test_invoke_reports_session_to_gateway(client, monkeypatch, respx_or_none=No
     assert recorded["output_tokens"] > 0
 
 
+def test_langflow_timings_reach_trace_metadata(monkeypatch):
+    from langchain_core.messages import AIMessage
+
+    class TimedGraph:
+        framework = "langflow"
+
+        async def ainvoke(self, payload, *, config):
+            return {"messages": [AIMessage(content="done", response_metadata={
+                "lfx_timing": {"execution_time": 0.02, "component_timings": [
+                    {"component": "Chat Output", "duration": 0.01}
+                ]},
+            })]}
+
+    recorded = {}
+    monkeypatch.setattr("agent_runtime.reporting.record_trace", lambda payload: recorded.update(payload))
+    with TestClient(create_app(graph=TimedGraph())) as timed_client:
+        response = timed_client.post("/invoke", json={"message": "hi"})
+    assert response.status_code == 200
+    assert recorded["metadata"]["lfx_timing"]["component_timings"][0]["component"] == "Chat Output"
+    assert recorded["metadata"]["usage_available"] is False
+
+
 def test_invoke_uses_gateway_identity_headers(client, monkeypatch):
     """One shared runtime serves many agents: the gateway's identity headers
     must win over the runtime's own environment."""
