@@ -16,3 +16,10 @@ jobs:
     uses: kiongahq/.github/.github/workflows/image.yml@main
     permissions: {contents: read, packages: write}
     with: {image: agent-runtime}
+  langflow-image:
+    needs: python
+    uses: kiongahq/.github/.github/workflows/image.yml@main
+    permissions: {contents: read, packages: write}
+    with:
+      image: langflow-agent-runtime
+      build-args: RUNTIME_FLAVOR=langflow

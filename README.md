@@ -48,6 +48,18 @@ The response holds the reply, the session ID, token counts, cost and duration.
 reports the agent's identity. The workers start with
 `python -m features.materialize` and `python -m realtime.service`.
 
+### Published Langflow flows
+
+The `langflow-agent-runtime` image uses the same HTTP and reporting contract with
+LFX 1.13.x. Build it with `--build-arg RUNTIME_FLAVOR=langflow`, or use the image
+published by CI. The Kubernetes operator mounts a selected flow revision at
+`/app/flows/flow.json` and sets
+`MLAIOPS_GRAPH_MODULE=agents.langflow_adapter:build_langflow`. An adjacent
+`kionga-api` helper gives Kionga components a project-scoped gateway identity;
+its token is not mounted into the agent process or stored in the flow. The
+runtime executes each turn through `lfx run` and reports a complete reply.
+The editor workspace can be stopped after publication.
+
 ## Documentation
 
 - Product documentation: [Build agents](https://kiongahq.github.io/docs/guides/agents/),

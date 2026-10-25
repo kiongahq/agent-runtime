@@ -30,12 +30,23 @@ RUN case "$SDK_SOURCE" in \
       *) echo "SDK_SOURCE must be release or local, got: $SDK_SOURCE" >&2; exit 1 ;; \
     esac && rm -rf /opt/sdk
 
+# Publish a separate Langflow runtime flavor. Native agent images keep the
+# smaller dependency set; exported 1.13.x flows run with matching LFX 1.13.x.
+ARG RUNTIME_FLAVOR=standard
+ARG LFX_VERSION=1.13.0
+RUN case "$RUNTIME_FLAVOR" in \
+      standard) ;; \
+      langflow) pip install --no-cache-dir "lfx[bundles]==${LFX_VERSION}" ;; \
+      *) echo "Unknown runtime flavor: $RUNTIME_FLAVOR" >&2; exit 1 ;; \
+    esac
+
 COPY agent_runtime /app/agent_runtime
 COPY agents /app/agents
 COPY features /app/features
 COPY realtime /app/realtime
 
 ENV PYTHONPATH=/app \
+    LANGFLOW_COMPONENTS_PATH=/app/agent_runtime/langflow_components \
     MLAIOPS_RUNTIME_PORT=9000
 
 EXPOSE 9000
