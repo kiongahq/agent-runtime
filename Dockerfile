@@ -34,9 +34,15 @@ RUN case "$SDK_SOURCE" in \
 # smaller dependency set; exported 1.13.x flows run with matching LFX 1.13.x.
 ARG RUNTIME_FLAVOR=standard
 ARG LFX_VERSION=1.13.0
+ARG LFX_PROVIDER_VERSION=0.2.1
 RUN case "$RUNTIME_FLAVOR" in \
       standard) ;; \
-      langflow) pip install --no-cache-dir "lfx[bundles]==${LFX_VERSION}" ;; \
+      langflow) pip install --no-cache-dir \
+        "lfx==${LFX_VERSION}" \
+        "lfx-openai==${LFX_PROVIDER_VERSION}" \
+        "lfx-openai-compatible==${LFX_PROVIDER_VERSION}" \
+        "lfx-anthropic==${LFX_PROVIDER_VERSION}" \
+        "lfx-ollama==${LFX_PROVIDER_VERSION}" ;; \
       *) echo "Unknown runtime flavor: $RUNTIME_FLAVOR" >&2; exit 1 ;; \
     esac
 

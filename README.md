@@ -51,7 +51,8 @@ reports the agent's identity. The workers start with
 ### Published Langflow flows
 
 The `langflow-agent-runtime` image uses the same HTTP and reporting contract with
-LFX 1.13.x. Build it with `--build-arg RUNTIME_FLAVOR=langflow`, or use the image
+LFX 1.13.x and pinned OpenAI, OpenAI-compatible, Anthropic, and Ollama extensions.
+Build it with `--build-arg RUNTIME_FLAVOR=langflow`, or use the image
 published by CI. The Kubernetes operator mounts a selected flow revision at
 `/app/flows/flow.json` and sets
 `MLAIOPS_GRAPH_MODULE=agents.langflow_adapter:build_langflow`. An adjacent
@@ -59,6 +60,8 @@ published by CI. The Kubernetes operator mounts a selected flow revision at
 its token is not mounted into the agent process or stored in the flow. The
 runtime executes each turn through `lfx run` and reports a complete reply.
 The editor workspace can be stopped after publication.
+Flows that use other provider bundles require a runtime image extended with
+those bundles before publishing.
 
 ## Documentation
 
