@@ -42,7 +42,7 @@ RUN case "$RUNTIME_FLAVOR" in \
         "lfx-openai==${LFX_PROVIDER_VERSION}" \
         "lfx-openai-compatible==${LFX_PROVIDER_VERSION}" \
         "lfx-anthropic==${LFX_PROVIDER_VERSION}" \
-        "lfx-ollama==${LFX_PROVIDER_VERSION}" ;; \
+        "lfx-ollama==${LFX_PROVIDER_VERSION}" && lfx --version ;; \
       *) echo "Unknown runtime flavor: $RUNTIME_FLAVOR" >&2; exit 1 ;; \
     esac
 
