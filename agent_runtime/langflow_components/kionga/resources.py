@@ -28,7 +28,7 @@ def request(path: str, payload: object = None) -> object:
         method="GET" if data is None else "POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        with urllib.request.urlopen(req, timeout=30) as response:  # nosec B310 -- fixed loopback base and validated relative path
             return json.load(response)
     except urllib.error.HTTPError as error:
         raise ValueError(f"Kionga rejected this resource request ({error.code})") from error
