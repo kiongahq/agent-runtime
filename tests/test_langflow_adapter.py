@@ -4,7 +4,7 @@ import os
 import pytest
 from langchain_core.messages import HumanMessage
 
-from agents.langflow_adapter import LangflowGraph, _result_text, build_langflow
+from agents.langflow_adapter import LangflowGraph, _result_text, _timing_summary, build_langflow
 from agent_runtime.graphs import GraphLoadError, build_graph
 
 
@@ -12,6 +12,13 @@ def test_result_text_finds_nested_chat_output():
     payload = {"outputs": [{"results": {"message": {"text": "hello"}}}]}
     assert _result_text(payload) == "hello"
     assert _result_text({"result": [{"message": {"text": "hello"}}]}) == "hello"
+
+
+def test_timing_summary_keeps_only_bounded_duration_data():
+    assert _timing_summary({"timing": {"execution_time": 0.2, "component_timings": [
+        {"component": "Chat Output", "duration": 0.1, "secret": "never report"},
+        {"component": "bad", "duration": float("nan")},
+    ]}}) == {"execution_time": 0.2, "component_timings": [{"component": "Chat Output", "duration": 0.1}]}
 
 
 def test_missing_published_flow_fails_before_server_starts(tmp_path):
@@ -28,7 +35,9 @@ async def test_headless_langflow_invocation_uses_mounted_flow_and_session(tmp_pa
         "#!/usr/bin/env python3\n"
         "import json, sys\n"
         "args=sys.argv[1:]\n"
-        "print(json.dumps({'result': {'text': args[args.index('--input-value')+1] + ':' + args[args.index('--session-id')+1]}}))\n"
+        "assert '--timing' in args\n"
+        "print(json.dumps({'result': {'text': args[args.index('--input-value')+1] + ':' + args[args.index('--session-id')+1]}, "
+        "'timing': {'execution_time': 0.02, 'component_timings': [{'component': 'Chat Output', 'duration': 0.01}]}}))\n"
     )
     executable.chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
@@ -36,6 +45,7 @@ async def test_headless_langflow_invocation_uses_mounted_flow_and_session(tmp_pa
     result = await graph.ainvoke({"messages": [HumanMessage(content="hello")]},
                                  config={"configurable": {"thread_id": "session-1"}})
     assert result["messages"][-1].content == "hello:session-1"
+    assert result["messages"][-1].response_metadata["lfx_timing"]["execution_time"] == 0.02
     streamed = [item async for item in graph.astream(
         {"messages": [HumanMessage(content="hello")]},
         config={"configurable": {"thread_id": "session-2"}}, stream_mode="messages")]

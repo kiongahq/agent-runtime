@@ -138,6 +138,7 @@ def create_app(graph: Any = None) -> FastAPI:
         started = time.perf_counter()
         status, reply, usage = "succeeded", "", Usage()
         usage_available = False
+        timing = None
         try:
             result = await app.state.graph.ainvoke(
                 {"messages": [HumanMessage(content=payload.message)]},
@@ -147,6 +148,7 @@ def create_app(graph: Any = None) -> FastAPI:
             reply = str(messages[-1].content) if messages else ""
             usage = usage_from_messages(messages)
             usage_available = any(getattr(message, "usage_metadata", None) is not None for message in messages)
+            timing = getattr(messages[-1], "response_metadata", {}).get("lfx_timing") if messages else None
         except Exception as error:
             status = "failed"
             raise HTTPException(status_code=502, detail=f"agent execution failed: {error}")
@@ -163,7 +165,8 @@ def create_app(graph: Any = None) -> FastAPI:
                 duration_ms=duration_ms,
                 usage=usage,
                 metadata={"framework": getattr(app.state.graph, "framework", "langgraph"),
-                          "usage_available": usage_available},
+                          "usage_available": usage_available,
+                          **({"lfx_timing": timing} if timing else {})},
             )
         return InvokeResponse(
             usage_available=usage_available,
@@ -200,6 +203,7 @@ def create_app(graph: Any = None) -> FastAPI:
                 status = "failed"
                 yield f"data: {json.dumps({'error': str(error)})}\n\n"
             usage = usage_from_messages(collected)
+            timing = getattr(collected[-1], "response_metadata", {}).get("lfx_timing") if collected else None
             duration_ms = int((time.perf_counter() - started) * 1000)
             yield (
                 "data: "
@@ -226,7 +230,8 @@ def create_app(graph: Any = None) -> FastAPI:
                 duration_ms=duration_ms,
                 usage=usage,
                 metadata={"framework": getattr(app.state.graph, "framework", "langgraph"),
-                          "usage_available": any(getattr(item, "usage_metadata", None) is not None for item in collected)},
+                          "usage_available": any(getattr(item, "usage_metadata", None) is not None for item in collected),
+                          **({"lfx_timing": timing} if timing else {})},
             )
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")

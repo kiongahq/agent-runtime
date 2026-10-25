@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,30 @@ from langchain_core.messages import AIMessage, HumanMessage
 from agent_runtime.graphs import GraphLoadError
 
 MAX_OUTPUT_BYTES = 4 * 1024 * 1024
+
+
+def _timing_summary(result: dict[str, Any]) -> dict[str, Any]:
+    """Retain bounded LFX durations and component labels, never component data."""
+    raw = result.get("timing")
+    if not isinstance(raw, dict):
+        return {}
+    summary: dict[str, Any] = {}
+    for key in ("load_time", "execution_time", "total_time"):
+        value = raw.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 3600:
+            summary[key] = value
+    components = []
+    for item in raw.get("component_timings", [])[:128] if isinstance(raw.get("component_timings"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        duration = item.get("duration")
+        label = item.get("component")
+        if isinstance(label, str) and len(label) <= 128 and isinstance(duration, (int, float)) \
+                and not isinstance(duration, bool) and math.isfinite(duration) and 0 <= duration <= 3600:
+            components.append({"component": label, "duration": duration})
+    if components:
+        summary["component_timings"] = components
+    return summary
 
 
 def _result_text(result: Any) -> str:
@@ -53,7 +78,7 @@ class LangflowGraph:
             raise ValueError("Langflow requires a text message")
         session_id = config.get("configurable", {}).get("thread_id", "")
         command = ["lfx", "run", str(self.flow_path), "--input-value", message.content,
-                   "--format", "json"]
+                   "--format", "json", "--timing"]
         if session_id:
             command.extend(["--session-id", str(session_id)])
         try:
@@ -77,7 +102,8 @@ class LangflowGraph:
         text = _result_text(result.get("result", result))
         if not text:
             raise RuntimeError("Langflow returned no text output")
-        return {"messages": [AIMessage(content=text)]}
+        timing = _timing_summary(result)
+        return {"messages": [AIMessage(content=text, response_metadata={"lfx_timing": timing} if timing else {})]}
 
     async def astream(self, payload: dict[str, Any], *, config: dict[str, Any],
                       stream_mode: str = "messages"):
