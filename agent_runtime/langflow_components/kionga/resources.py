@@ -146,6 +146,66 @@ class KiongaObjectText(Component):
         return Message(text=preview.get("content", ""))
 
 
+class KiongaDatasets(Component):
+    display_name = "Kionga Datasets"
+    description = "Discover datasets assigned to this project and storage grant."
+    name = "KiongaDatasets"
+    icon = "Database"
+    inputs = []
+    outputs = [Output(name="datasets", display_name="Datasets", method="list_datasets")]
+
+    def list_datasets(self) -> Data:
+        return Data(data={"datasets": request("/datasets").get("items", [])})
+
+
+class KiongaDatasetObjects(Component):
+    display_name = "Kionga Dataset Objects"
+    description = "Browse objects only within a selected authorized dataset prefix."
+    name = "KiongaDatasetObjects"
+    icon = "Database"
+    inputs = [
+        BoolInput(name="refresh_datasets", display_name="Refresh datasets", value=False, real_time_refresh=True),
+        DropdownInput(name="dataset_id", display_name="Dataset", options=[], required=True, combobox=True),
+        StrInput(name="prefix", display_name="Relative prefix", value=""),
+    ]
+    outputs = [Output(name="objects", display_name="Objects", method="list_objects")]
+
+    def update_build_config(self, build_config, field_value, field_name=None):
+        if field_name == "refresh_datasets":
+            try:
+                build_config["dataset_id"]["options"] = [
+                    item["id"] for item in request("/datasets").get("items", [])
+                ]
+            except ValueError:
+                build_config["dataset_id"]["options"] = []
+        return build_config
+
+    def list_objects(self) -> Data:
+        dataset_id = urllib.parse.quote(self.dataset_id, safe="")
+        query = urllib.parse.urlencode({"prefix": self.prefix})
+        return Data(data=request(f"/datasets/{dataset_id}/objects?{query}"))
+
+
+class KiongaDatasetText(Component):
+    display_name = "Kionga Dataset Text"
+    description = "Read a bounded text preview from a selected dataset; Kionga checks its prefix."
+    name = "KiongaDatasetText"
+    icon = "FileText"
+    inputs = [
+        StrInput(name="dataset_id", display_name="Dataset ID", required=True),
+        StrInput(name="key", display_name="Object key", required=True),
+    ]
+    outputs = [Output(name="content", display_name="Content", method="read_object")]
+
+    def read_object(self) -> Message:
+        dataset_id = urllib.parse.quote(self.dataset_id, safe="")
+        query = urllib.parse.urlencode({"key": self.key})
+        preview = request(f"/datasets/{dataset_id}/object?{query}")
+        if preview.get("truncated"):
+            raise ValueError("Object exceeds Kionga's text preview limit")
+        return Message(text=preview.get("content", ""))
+
+
 class KiongaFeatureViews(Component):
     display_name = "Kionga Feature Views"
     description = "Discover authorized feature views and their metadata."
