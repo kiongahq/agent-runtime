@@ -42,7 +42,7 @@ jobs:
           image="ghcr.io/kiongahq/langflow-agent-runtime:sha-${GITHUB_SHA::7}"
           docker pull "$image"
           docker run --rm --entrypoint python "$image" -c \
-            'from agent_runtime.langflow_components.kionga.resources import KiongaKnowledgeSearch, KiongaAPIInvoke; assert KiongaKnowledgeSearch.name and KiongaAPIInvoke.name'
+            'from agent_runtime.langflow_components.kionga.resources import KiongaKnowledgeSearch, KiongaAPIInvoke, KiongaChatAPI, chat_completion_text; assert KiongaKnowledgeSearch.name and KiongaAPIInvoke.name and KiongaChatAPI.name; assert chat_completion_text({"choices": [{"message": {"content": "ok"}}]}) == "ok"'
           docker run --rm --entrypoint lfx \
             -v "$PWD/tests/fixtures:/flows:ro" "$image" \
             run /flows/echo-flow.json --input-value 'Kionga smoke response' --format json --timing \

@@ -300,3 +300,52 @@ class KiongaAPIInvoke(Component):
             raise ValueError("Provide a JSON object or array as the request body")
         connection_id = urllib.parse.quote(self.connection_id, safe="")
         return Data(data=request(f"/agent-api-connections/{connection_id}/invoke", payload))
+
+
+def chat_completion_text(response: object) -> str:
+    """Read an OpenAI-compatible completion without retaining provider metadata."""
+    if not isinstance(response, dict) or not isinstance(response.get("choices"), list) or not response["choices"]:
+        raise ValueError("The approved chat API returned no choices")
+    choice = response["choices"][0]
+    message = choice.get("message") if isinstance(choice, dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str) or not content:
+        raise ValueError("The approved chat API returned no text")
+    return content
+
+
+class KiongaChatAPI(Component):
+    display_name = "Kionga Chat API"
+    description = "Use an approved OpenAI-compatible chat endpoint; Kionga supplies its credential."
+    name = "KiongaChatAPI"
+    icon = "Bot"
+    inputs = [
+        BoolInput(name="refresh_connections", display_name="Refresh chat APIs", value=False, real_time_refresh=True),
+        DropdownInput(name="connection_id", display_name="Approved chat API", options=[], required=True, combobox=True),
+        StrInput(name="model", display_name="Provider model ID", required=True),
+        MessageTextInput(name="input_text", display_name="Message", required=True, tool_mode=True),
+        MessageTextInput(name="system_text", display_name="System instruction", value=""),
+    ]
+    outputs = [Output(name="reply", display_name="Reply", method="chat")]
+
+    def update_build_config(self, build_config, field_value, field_name=None):
+        if field_name == "refresh_connections":
+            try:
+                build_config["connection_id"]["options"] = [
+                    item["id"] for item in request("/agent-api-connections").get("items", [])
+                ]
+            except ValueError:
+                build_config["connection_id"]["options"] = []
+        return build_config
+
+    def chat(self) -> Message:
+        connection_id = urllib.parse.quote(self.connection_id, safe="")
+        messages = []
+        if self.system_text:
+            messages.append({"role": "system", "content": self.system_text})
+        messages.append({"role": "user", "content": self.input_text})
+        response = request(
+            f"/agent-api-connections/{connection_id}/invoke",
+            {"model": self.model, "messages": messages},
+        )
+        return Message(text=chat_completion_text(response))
