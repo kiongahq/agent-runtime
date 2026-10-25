@@ -255,3 +255,48 @@ class KiongaKnowledgeChunk(Component):
             {"text": self.text, "vector": embedding_vector(self.embedding_json)},
         )
         return Data(data=result)
+
+
+class KiongaAPIConnections(Component):
+    display_name = "Kionga API Connections"
+    description = "List project-authorized API operations without exposing their endpoint or credential."
+    name = "KiongaAPIConnections"
+    icon = "Plug"
+    inputs = []
+    outputs = [Output(name="connections", display_name="Connections", method="list_connections")]
+
+    def list_connections(self) -> Data:
+        return Data(data={"connections": request("/agent-api-connections").get("items", [])})
+
+
+class KiongaAPIInvoke(Component):
+    display_name = "Kionga API Invoke"
+    description = "Call an administrator-approved project API operation using a JSON request body."
+    name = "KiongaAPIInvoke"
+    icon = "Plug"
+    inputs = [
+        BoolInput(name="refresh_connections", display_name="Refresh connections", value=False, real_time_refresh=True),
+        DropdownInput(name="connection_id", display_name="API connection", options=[], required=True, combobox=True),
+        MessageTextInput(name="request_json", display_name="Request JSON", required=True, tool_mode=True),
+    ]
+    outputs = [Output(name="response", display_name="Response", method="invoke")]
+
+    def update_build_config(self, build_config, field_value, field_name=None):
+        if field_name == "refresh_connections":
+            try:
+                build_config["connection_id"]["options"] = [
+                    item["id"] for item in request("/agent-api-connections").get("items", [])
+                ]
+            except ValueError:
+                build_config["connection_id"]["options"] = []
+        return build_config
+
+    def invoke(self) -> Data:
+        try:
+            payload = json.loads(self.request_json)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError("Provide a valid JSON request body") from error
+        if payload is None:
+            raise ValueError("Provide a JSON object or array as the request body")
+        connection_id = urllib.parse.quote(self.connection_id, safe="")
+        return Data(data=request(f"/agent-api-connections/{connection_id}/invoke", payload))
