@@ -23,3 +23,26 @@ jobs:
     with:
       image: langflow-agent-runtime
       build-args: RUNTIME_FLAVOR=langflow
+  langflow-smoke:
+    if: github.event_name != 'pull_request'
+    needs: langflow-image
+    runs-on: ubuntu-latest
+    permissions: {contents: read, packages: read}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Execute exported echo flow with LFX
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/kiongahq/langflow-agent-runtime:sha-${GITHUB_SHA::7}"
+          docker pull "$image"
+          docker run --rm --entrypoint lfx \
+            -v "$PWD/tests/fixtures:/flows:ro" "$image" \
+            run /flows/echo-flow.json --input-value 'Kionga smoke response' --format json \
+            | tee /tmp/kionga-lfx-smoke.json
+          grep -q 'Kionga smoke response' /tmp/kionga-lfx-smoke.json
