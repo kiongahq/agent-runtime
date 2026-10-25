@@ -206,6 +206,66 @@ class KiongaDatasetText(Component):
         return Message(text=preview.get("content", ""))
 
 
+class KiongaRegisteredStorage(Component):
+    display_name = "Kionga Registered Storage"
+    description = "Discover S3-compatible sources already assigned to this project."
+    name = "KiongaRegisteredStorage"
+    icon = "Database"
+    inputs = []
+    outputs = [Output(name="sources", display_name="Sources", method="list_sources")]
+
+    def list_sources(self) -> Data:
+        return Data(data={"sources": request("/registered-storage").get("items", [])})
+
+
+class KiongaRegisteredObjects(Component):
+    display_name = "Kionga Registered Objects"
+    description = "Browse a registered storage source through Kionga's project grant."
+    name = "KiongaRegisteredObjects"
+    icon = "Database"
+    inputs = [
+        BoolInput(name="refresh_sources", display_name="Refresh sources", value=False, real_time_refresh=True),
+        DropdownInput(name="source_id", display_name="Source", options=[], required=True, combobox=True),
+        StrInput(name="prefix", display_name="Prefix", value=""),
+    ]
+    outputs = [Output(name="objects", display_name="Objects", method="list_objects")]
+
+    def update_build_config(self, build_config, field_value, field_name=None):
+        if field_name == "refresh_sources":
+            try:
+                build_config["source_id"]["options"] = [
+                    item["id"] for item in request("/registered-storage").get("items", [])
+                ]
+            except ValueError:
+                build_config["source_id"]["options"] = []
+        return build_config
+
+    def list_objects(self) -> Data:
+        source_id = urllib.parse.quote(self.source_id, safe="")
+        query = urllib.parse.urlencode({"prefix": self.prefix})
+        return Data(data=request(f"/registered-storage/{source_id}/objects?{query}"))
+
+
+class KiongaRegisteredObjectText(Component):
+    display_name = "Kionga Registered Object Text"
+    description = "Read a bounded text preview from a project-authorized source."
+    name = "KiongaRegisteredObjectText"
+    icon = "FileText"
+    inputs = [
+        StrInput(name="source_id", display_name="Source ID", required=True),
+        StrInput(name="key", display_name="Object key", required=True),
+    ]
+    outputs = [Output(name="content", display_name="Content", method="read_object")]
+
+    def read_object(self) -> Message:
+        source_id = urllib.parse.quote(self.source_id, safe="")
+        query = urllib.parse.urlencode({"key": self.key})
+        preview = request(f"/registered-storage/{source_id}/object?{query}")
+        if preview.get("truncated"):
+            raise ValueError("Object exceeds Kionga's text preview limit")
+        return Message(text=preview.get("content", ""))
+
+
 class KiongaFeatureViews(Component):
     display_name = "Kionga Feature Views"
     description = "Discover authorized feature views and their metadata."
