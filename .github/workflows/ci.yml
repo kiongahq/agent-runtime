@@ -48,3 +48,7 @@ jobs:
             run /flows/echo-flow.json --input-value 'Kionga smoke response' --format json \
             | tee /tmp/kionga-lfx-smoke.json
           grep -q 'Kionga smoke response' /tmp/kionga-lfx-smoke.json
+          docker run --rm --entrypoint python \
+            -v "$PWD/tests/fixtures:/flows:ro" \
+            -e KIONGA_LANGFLOW_FLOW_PATH=/flows/echo-flow.json "$image" -c \
+            'import asyncio; from langchain_core.messages import HumanMessage; from agents.langflow_adapter import build_langflow; result = asyncio.run(build_langflow().ainvoke({"messages": [HumanMessage(content="Kionga adapter response")]}, config={"configurable": {"thread_id": "smoke-session"}})); assert "Kionga adapter response" in result["messages"][-1].content'
