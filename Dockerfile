@@ -53,6 +53,7 @@ COPY realtime /app/realtime
 
 ENV PYTHONPATH=/app \
     LANGFLOW_COMPONENTS_PATH=/app/agent_runtime/langflow_components \
+    LANGFLOW_CONFIG_DIR=/tmp/kionga-langflow-runtime \
     MLAIOPS_RUNTIME_PORT=9000
 
 EXPOSE 9000
