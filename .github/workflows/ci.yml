@@ -45,7 +45,7 @@ jobs:
             'from agent_runtime.langflow_components.kionga.resources import KiongaKnowledgeSearch, KiongaAPIInvoke; assert KiongaKnowledgeSearch.name and KiongaAPIInvoke.name'
           docker run --rm --entrypoint lfx \
             -v "$PWD/tests/fixtures:/flows:ro" "$image" \
-            run /flows/echo-flow.json --input-value 'Kionga smoke response' --format json \
+            run /flows/echo-flow.json --input-value 'Kionga smoke response' --format json --timing \
             | tee /tmp/kionga-lfx-smoke.json
           grep -q 'Kionga smoke response' /tmp/kionga-lfx-smoke.json
           docker run --rm --entrypoint python \
