@@ -41,6 +41,8 @@ jobs:
           set -euo pipefail
           image="ghcr.io/kiongahq/langflow-agent-runtime:sha-${GITHUB_SHA::7}"
           docker pull "$image"
+          docker run --rm --entrypoint python "$image" -c \
+            'from agent_runtime.langflow_components.kionga.resources import KiongaKnowledgeSearch, KiongaAPIInvoke; assert KiongaKnowledgeSearch.name and KiongaAPIInvoke.name'
           docker run --rm --entrypoint lfx \
             -v "$PWD/tests/fixtures:/flows:ro" "$image" \
             run /flows/echo-flow.json --input-value 'Kionga smoke response' --format json \
