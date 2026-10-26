@@ -1,0 +1,111 @@
+{
+  "id": "human-approval",
+  "template_version": "1.0.0",
+  "name": "Human approval",
+  "description": "Draft a reply, then send it only after a person approves it; rejected drafts become an escalation notice.",
+  "graph": {
+    "schema_version": 2,
+    "name": "Human approval",
+    "description": "Draft a reply, then send it only after a person approves it; rejected drafts become an escalation notice.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Request",
+        "x": 40,
+        "y": 160
+      },
+      {
+        "id": "draft",
+        "kind": "prompt",
+        "name": "Draft prompt",
+        "x": 260,
+        "y": 160,
+        "config": {
+          "template": "Draft a short, polite reply to this customer request:\n\n{input}"
+        }
+      },
+      {
+        "id": "model",
+        "kind": "model",
+        "name": "Draft reply",
+        "x": 480,
+        "y": 160,
+        "config": {
+          "model": "llm"
+        }
+      },
+      {
+        "id": "approve",
+        "kind": "approval",
+        "name": "Approve reply",
+        "x": 700,
+        "y": 160,
+        "config": {
+          "message": "Send this reply to the customer?\n\n{model}",
+          "timeout_seconds": "120"
+        }
+      },
+      {
+        "id": "escalate",
+        "kind": "prompt",
+        "name": "Escalation notice",
+        "x": 920,
+        "y": 280,
+        "config": {
+          "template": "A specialist will follow up on your request shortly."
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Reply",
+        "x": 1140,
+        "y": 160
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "draft",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "draft",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "model",
+        "to": "approve",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "approve",
+        "to": "output",
+        "from_port": "approved",
+        "to_port": "in"
+      },
+      {
+        "from": "approve",
+        "to": "escalate",
+        "from_port": "rejected",
+        "to_port": "in"
+      },
+      {
+        "from": "escalate",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 240,
+      "max_tokens": 50000
+    }
+  }
+}

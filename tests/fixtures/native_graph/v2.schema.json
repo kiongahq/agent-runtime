@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/kiongahq/contracts/v1.3.0/agent-graph/v2.schema.json",
+  "title": "Kionga native agent graph",
+  "description": "A declarative agent graph built in the native Agent Designer. Version 1 drafts (no schema_version) are valid version 2 documents: every field added in version 2 is optional and has a documented default. Node kinds, ports and settings are defined by the component registry (components.v1.json); this schema checks structure only.",
+  "type": "object",
+  "required": ["name", "nodes", "edges"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "description": "Absent means 1. Writers emit 2.",
+      "enum": [1, 2]
+    },
+    "name": {"type": "string", "minLength": 1, "maxLength": 100},
+    "description": {"type": "string", "maxLength": 1000},
+    "nodes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/node"}
+    },
+    "edges": {
+      "type": "array",
+      "maxItems": 300,
+      "items": {"$ref": "#/$defs/edge"}
+    },
+    "settings": {"$ref": "#/$defs/settings"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"type": "string", "pattern": "^[a-z][a-z_]{0,31}$"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 100},
+        "x": {"type": "number", "minimum": 0, "maximum": 10000},
+        "y": {"type": "number", "minimum": 0, "maximum": 10000},
+        "group": {"type": "string", "maxLength": 60, "description": "Visual group label. Groups do not change execution."},
+        "config": {
+          "type": "object",
+          "maxProperties": 30,
+          "propertyNames": {"maxLength": 80},
+          "additionalProperties": {"type": "string", "maxLength": 16000}
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"$ref": "#/$defs/id"},
+        "to": {"$ref": "#/$defs/id"},
+        "from_port": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$", "description": "Defaults to the source component's first output port."},
+        "to_port": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$", "description": "Defaults to the target component's first input port."}
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Run budgets. Integers only so the canonical content hash is identical in every language.",
+      "properties": {
+        "max_steps": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300, "default": 60},
+        "max_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000, "default": 50000}
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "registry_version": "1.1.0",
+  "registry_version": "1.2.0",
   "port_types": {
     "text": "Plain text.",
     "chat": "A conversation turn: text plus prior session turns.",
@@ -540,7 +540,342 @@
       "side_effects": false,
       "timeout_seconds": 1,
       "retries": 0
+    },
+    {
+      "kind": "router",
+      "version": "1.0.0",
+      "category": "Logic",
+      "label": "Router",
+      "description": "Send the value to the first route whose condition matches, or to default. Only that branch runs.",
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "route_1",
+          "type": "text"
+        },
+        {
+          "name": "route_2",
+          "type": "text"
+        },
+        {
+          "name": "route_3",
+          "type": "text"
+        },
+        {
+          "name": "route_4",
+          "type": "text"
+        },
+        {
+          "name": "default",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "route_1",
+          "label": "Route 1 condition",
+          "type": "expression",
+          "required": true,
+          "max_length": 300,
+          "help": "operator:argument, for example contains:billing."
+        },
+        {
+          "key": "route_2",
+          "label": "Route 2 condition",
+          "type": "expression",
+          "required": false,
+          "max_length": 300,
+          "help": "operator:argument, checked in order; leave empty to skip this route."
+        },
+        {
+          "key": "route_3",
+          "label": "Route 3 condition",
+          "type": "expression",
+          "required": false,
+          "max_length": 300,
+          "help": "operator:argument, checked in order; leave empty to skip this route."
+        },
+        {
+          "key": "route_4",
+          "label": "Route 4 condition",
+          "type": "expression",
+          "required": false,
+          "max_length": 300,
+          "help": "operator:argument, checked in order; leave empty to skip this route."
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 1,
+      "retries": 0
+    },
+    {
+      "kind": "join",
+      "version": "1.0.0",
+      "category": "Logic",
+      "label": "Join",
+      "description": "Wait for every upstream branch and combine their values into one JSON object keyed by node ID. Skipped branches are left out.",
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "json"
+        }
+      ],
+      "config": [
+        {
+          "key": "require",
+          "label": "Branches required",
+          "type": "enum",
+          "options": [
+            "any",
+            "all"
+          ],
+          "required": false,
+          "default": "any",
+          "help": "all fails the join when an upstream branch was skipped or failed."
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 1,
+      "retries": 0
+    },
+    {
+      "kind": "map",
+      "version": "1.0.0",
+      "category": "Flows",
+      "label": "Map",
+      "description": "Run a published version once per item of a JSON list (or per line of text), in parallel, and return the list of results.",
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "json",
+            "text"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "json"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "subflow",
+          "label": "Published version",
+          "type": "resource",
+          "resource": "agent_version",
+          "required": true,
+          "help": "A published native agent version in this project. Its graph is pinned by the version ID, so later edits never change this flow."
+        },
+        {
+          "key": "max_items",
+          "label": "Maximum items",
+          "type": "integer",
+          "required": false,
+          "default": "10",
+          "minimum": 1,
+          "maximum": 20
+        },
+        {
+          "key": "concurrency",
+          "label": "Parallel runs",
+          "type": "integer",
+          "required": false,
+          "default": "4",
+          "minimum": 1,
+          "maximum": 4
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 120,
+      "retries": 0
+    },
+    {
+      "kind": "loop",
+      "version": "1.0.0",
+      "category": "Flows",
+      "label": "Bounded loop",
+      "description": "Run a published version repeatedly, feeding each result back in, until the stop condition matches or the iteration limit is reached.",
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "text"
+        },
+        {
+          "name": "exhausted",
+          "type": "text"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "subflow",
+          "label": "Published version",
+          "type": "resource",
+          "resource": "agent_version",
+          "required": true,
+          "help": "A published native agent version in this project. Its graph is pinned by the version ID, so later edits never change this flow."
+        },
+        {
+          "key": "until",
+          "label": "Stop when",
+          "type": "expression",
+          "required": true,
+          "max_length": 300,
+          "help": "Checked against each result, for example not_contains:TODO."
+        },
+        {
+          "key": "max_iterations",
+          "label": "Maximum iterations",
+          "type": "integer",
+          "required": false,
+          "default": "3",
+          "minimum": 1,
+          "maximum": 10
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 180,
+      "retries": 0
+    },
+    {
+      "kind": "subflow",
+      "version": "1.0.0",
+      "category": "Flows",
+      "label": "Subflow",
+      "description": "Run a published version as one step and use its reply.",
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "text"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "subflow",
+          "label": "Published version",
+          "type": "resource",
+          "resource": "agent_version",
+          "required": true,
+          "help": "A published native agent version in this project. Its graph is pinned by the version ID, so later edits never change this flow."
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 120,
+      "retries": 0
+    },
+    {
+      "kind": "approval",
+      "version": "1.0.0",
+      "category": "Logic",
+      "label": "Human approval",
+      "description": "Pause the run until an authorized person approves or rejects it. Unanswered requests expire to rejected.",
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "approved",
+          "type": "text"
+        },
+        {
+          "name": "rejected",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "message",
+          "label": "Request shown to the approver",
+          "type": "template",
+          "required": false,
+          "default": "Approve this step?\n\n{context}",
+          "max_length": 2000
+        },
+        {
+          "key": "timeout_seconds",
+          "label": "Expire after (seconds)",
+          "type": "integer",
+          "required": false,
+          "default": "120",
+          "minimum": 10,
+          "maximum": 290
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 300,
+      "retries": 0
     }
   ],
-  "error_port": "Components with an error output emit the failure message there when the node fails with node_error, resource_denied, resource_unavailable or timeout; if the port is connected the run continues on that branch."
+  "error_port": "Components with an error output emit the failure message there when the node fails with node_error, resource_denied, resource_unavailable or timeout; if the port is connected the run continues on that branch.",
+  "flows": "Map, bounded loop and subflow run published versions (pinned by ID) as nested graphs. Nested runs share the parent run's step, token and time budgets and its side-effect approval; nesting is limited to 3 levels and 10 distinct versions per run.",
+  "approvals": "An approval node creates a Kionga approval request and waits. Project members with agents write access decide it; a run cannot approve itself. Expiry routes to rejected."
 }

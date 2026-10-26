@@ -53,6 +53,13 @@ class FakeResources(Resources):
     async def dataset_object(self, dataset_id, key):
         return await self._result("dataset_object", {"content": "Plan: Gold", "truncated": False}, dataset_id, key)
 
+    async def create_approval(self, run_id, node_id, message, timeout_seconds):
+        return await self._result("create_approval", {"id": "apr-" + "a" * 24, "status": "pending"},
+                                  run_id, node_id, message, timeout_seconds)
+
+    async def get_approval(self, approval_id):
+        return await self._result("get_approval", {"id": approval_id, "status": "approved"}, approval_id)
+
 
 def graph(nodes, edges, **settings):
     document = {"name": "test", "nodes": [{"id": n[0], "kind": n[1], "name": n[0], "config": n[2] if len(n) > 2 else {}}
@@ -418,6 +425,12 @@ async def test_previews_are_redacted_in_events():
 
 
 TEMPLATES = sorted((FIXTURES / "templates").glob("*.json"))
+ECHO_VERSION = "agv-" + "e" * 24
+# A published version that replies "echo: <input>" without a model.
+ECHO = normalize({"name": "echo", "nodes": [{"id": "input", "kind": "input", "name": "In"},
+                                            {"id": "p", "kind": "prompt", "name": "P", "config": {"template": "echo: {input}"}},
+                                            {"id": "output", "kind": "output", "name": "Out"}],
+                  "edges": [{"from": "input", "to": "p"}, {"from": "p", "to": "output"}]})
 
 
 @pytest.mark.parametrize("path", TEMPLATES, ids=lambda p: p.stem)
@@ -426,10 +439,12 @@ async def test_every_starter_template_runs_once_resources_are_chosen(path):
     document = normalize(json.loads(path.read_text())["graph"])
     assert validate_graph(document) == []
     picks = {"knowledge": {"knowledge_base": "kb-1"}, "tool": {"tool": "lookup"},
-             "api": {"connection": "api-1"}, "storage": {"dataset": "ds-1", "key": "doc.txt"}}
+             "api": {"connection": "api-1"}, "storage": {"dataset": "ds-1", "key": "doc.txt"},
+             "subflow": {"subflow": ECHO_VERSION}, "map": {"subflow": ECHO_VERSION}, "loop": {"subflow": ECHO_VERSION}}
     for node in document["nodes"]:
         node["config"].update(picks.get(node["kind"], {}))
-    events = await collect(document, text="I need a refund", resources=FakeResources(), allow_side_effects=True)
+    events = await collect(document, text="I need a refund", resources=FakeResources(), allow_side_effects=True,
+                           subflows={ECHO_VERSION: ECHO})
     assert final(events)["type"] == "run.completed", final(events)
     assert final(events)["output"]
 
@@ -489,3 +504,146 @@ async def test_extract_failures_are_node_errors():
     assert final(events)["error"]["code"] == "node_error" and "a.b is missing" in final(events)["error"]["message"]
     events = await collect(document, text="not json")
     assert "not JSON" in final(events)["error"]["message"]
+
+
+# Registry 1.2.0: parallel branches, router, join, flows, approval, streaming --------
+
+@pytest.mark.asyncio
+async def test_independent_branches_run_concurrently():
+    async def slow_search(*args):
+        await asyncio.sleep(0.3)
+        return [{"text": "doc"}]
+
+    resources = FakeResources(search_knowledge=slow_search)
+    document = graph([("input", "input"), ("a", "knowledge", {"knowledge_base": "kb-a"}),
+                      ("b", "knowledge", {"knowledge_base": "kb-b"}), ("join", "join"), ("output", "output")],
+                     [("input", "a"), ("input", "b"), ("a", "join"), ("b", "join"), ("join", "output")])
+    started = asyncio.get_running_loop().time()
+    events = await collect(document, resources=resources)
+    elapsed = asyncio.get_running_loop().time() - started
+    assert final(events)["type"] == "run.completed"
+    assert elapsed < 0.55, f"two 0.3 s branches took {elapsed:.2f} s; they did not overlap"
+    assert json.loads(final(events)["output"]) == {"a": "doc", "b": "doc"}
+
+
+@pytest.mark.parametrize("text, port", [("billing question", "route_1"), ("invoice copy", "route_2"), ("hi", "default")])
+@pytest.mark.asyncio
+async def test_router_takes_the_first_matching_route(text, port):
+    document = graph([("input", "input"), ("r", "router", {"route_1": "contains:billing", "route_2": "contains:invoice"}),
+                      ("one", "prompt", {"template": "one"}), ("two", "prompt", {"template": "two"}),
+                      ("other", "prompt", {"template": "other"}), ("output", "output")],
+                     [("input", "r"), ("r", "one", "route_1"), ("r", "two", "route_2"), ("r", "other", "default"),
+                      ("one", "output"), ("two", "output"), ("other", "output")])
+    events = await collect(document, text=text)
+    assert [e for e in by_node(events, "r") if e["type"] == "node.completed"][0]["port"] == port
+    assert final(events)["output"] == {"route_1": "one", "route_2": "two", "default": "other"}[port]
+    assert sum(1 for e in events if e["type"] == "node.skipped") == 2
+
+
+@pytest.mark.asyncio
+async def test_join_require_all_fails_when_a_branch_was_skipped():
+    def build(require):
+        return graph([("input", "input"), ("c", "condition", {"expression": "contains:yes"}),
+                      ("t", "prompt", {"template": "t"}), ("j", "join", {"require": require}), ("output", "output")],
+                     [("input", "c"), ("c", "t", "true"), ("t", "j"), ("input", "j"), ("j", "output")])
+    events = await collect(build("any"), text="no")
+    assert json.loads(final(events)["output"]) == {"input": "no"}
+    events = await collect(build("all"), text="no")
+    assert final(events)["type"] == "run.failed" and "requires every branch" in final(events)["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_model_tokens_stream_as_deltas_and_sum_to_the_reply():
+    document = graph(LINEAR, LINEAR_EDGES)
+    events = await collect(document, llm_factory=lambda: MockChatModel(["streamed reply text"]))
+    deltas = [e["delta"] for e in events if e["type"] == "node.delta"]
+    assert deltas and all(e["node_id"] == "model" for e in events if e["type"] == "node.delta")
+    assert "".join(deltas) == final(events)["output"]
+
+
+@pytest.mark.asyncio
+async def test_subflow_map_and_loop_run_published_versions():
+    flows = {ECHO_VERSION: ECHO}
+    sub = graph([("input", "input"), ("s", "subflow", {"subflow": ECHO_VERSION}), ("output", "output")],
+                [("input", "s"), ("s", "output")])
+    assert final(await collect(sub, text="hi", subflows=flows))["output"] == "echo: hi"
+
+    mapped = graph([("input", "input"), ("m", "map", {"subflow": ECHO_VERSION, "concurrency": "2"}), ("output", "output")],
+                   [("input", "m"), ("m", "output")])
+    events = await collect(mapped, text='["a", "b", {"c": 1}]', subflows=flows)
+    assert json.loads(final(events)["output"]) == ["echo: a", "echo: b", 'echo: {"c": 1}']
+    assert [e for e in by_node(events, "m") if e["type"] == "node.completed"][0]["iterations"] == 3
+    events = await collect(mapped, text="\n".join(str(i) for i in range(11)), subflows=flows)
+    assert "allows 10" in final(events)["error"]["message"]
+
+    looped = graph([("input", "input"), ("l", "loop", {"subflow": ECHO_VERSION, "until": "contains:echo: echo:", "max_iterations": "5"}),
+                    ("output", "output"), ("tired", "prompt", {"template": "gave up"})],
+                   [("input", "l"), ("l", "output"), ("l", "tired", "exhausted"), ("tired", "output")])
+    events = await collect(looped, text="x", subflows=flows)
+    assert final(events)["output"] == "echo: echo: x"
+    assert [e for e in by_node(events, "l") if e["type"] == "node.completed"][0]["iterations"] == 2
+    never = graph([("input", "input"), ("l", "loop", {"subflow": ECHO_VERSION, "until": "contains:never", "max_iterations": "3"}),
+                   ("tired", "prompt", {"template": "gave up after {l}"}), ("output", "output")],
+                  [("input", "l"), ("l", "tired", "exhausted"), ("tired", "output")])
+    assert final(await collect(never, text="x", subflows=flows))["output"] == "gave up after echo: echo: echo: x"
+
+
+@pytest.mark.asyncio
+async def test_flows_share_the_parent_budget_and_nesting_is_bounded():
+    flows = {ECHO_VERSION: ECHO}
+    mapped = graph([("input", "input"), ("m", "map", {"subflow": ECHO_VERSION, "max_items": "20"}), ("output", "output")],
+                   [("input", "m"), ("m", "output")], max_steps=12)
+    events = await collect(mapped, text="\n".join("abcdefgh"), subflows=flows)
+    assert final(events)["error"]["code"] == "budget_exceeded", "nested steps count against the parent"
+
+    inner = "agv-" + "1" * 24
+    outer = "agv-" + "2" * 24
+    def nest(target):
+        return normalize({"name": "n", "nodes": [{"id": "input", "kind": "input", "name": "In"},
+                                                 {"id": "s", "kind": "subflow", "name": "S", "config": {"subflow": target}},
+                                                 {"id": "output", "kind": "output", "name": "Out"}],
+                          "edges": [{"from": "input", "to": "s"}, {"from": "s", "to": "output"}]})
+    chain = {ECHO_VERSION: ECHO, inner: nest(ECHO_VERSION), outer: nest(inner)}
+    ok = graph([("input", "input"), ("s", "subflow", {"subflow": inner}), ("output", "output")], [("input", "s"), ("s", "output")])
+    assert final(await collect(ok, text="hi", subflows=chain))["output"] == "echo: hi"
+    deep = graph([("input", "input"), ("s", "subflow", {"subflow": outer}), ("output", "output")], [("input", "s"), ("s", "output")])
+    events = await collect(deep, text="hi", subflows=chain)
+    assert final(events)["error"]["code"] == "invalid_graph" and "3 levels" in final(events)["error"]["message"]
+    missing = graph([("input", "input"), ("s", "subflow", {"subflow": "agv-" + "9" * 24}), ("output", "output")],
+                    [("input", "s"), ("s", "output")])
+    assert "not provided" in final(await collect(missing, subflows=chain))["error"]["message"]
+
+
+@pytest.mark.parametrize("decision, port", [("approved", "approved"), ("rejected", "rejected")])
+@pytest.mark.asyncio
+async def test_approval_waits_for_a_decision(monkeypatch, decision, port):
+    from agent_runtime.native_graph import engine
+    monkeypatch.setattr(engine, "APPROVAL_POLL_SECONDS", 0.01)
+    polls = []
+
+    async def get_approval(approval_id):
+        polls.append(approval_id)
+        return {"id": approval_id, "status": "pending" if len(polls) < 3 else decision}
+
+    resources = FakeResources(get_approval=get_approval)
+    document = graph([("input", "input"), ("ok", "approval", {"message": "Send {input}?"}),
+                      ("yes", "prompt", {"template": "sent"}), ("no", "prompt", {"template": "held"}), ("output", "output")],
+                     [("input", "ok"), ("ok", "yes", "approved"), ("ok", "no", "rejected"), ("yes", "output"), ("no", "output")])
+    events = await collect(document, text="draft", resources=resources)
+    assert resources.calls[0][0] == "create_approval" and resources.calls[0][2:4] == ("ok", "Send draft?")
+    requested = [e for e in events if e["type"] == "approval.requested"][0]
+    resolved = [e for e in events if e["type"] == "approval.resolved"][0]
+    assert requested["approval_id"] == resolved["approval_id"] and resolved["port"] == port
+    assert final(events)["output"] == ("sent" if port == "approved" else "held")
+
+
+@pytest.mark.asyncio
+async def test_unanswered_approval_expires_to_rejected(monkeypatch):
+    from agent_runtime.native_graph import engine
+    monkeypatch.setattr(engine, "APPROVAL_POLL_SECONDS", 0.01)
+    resources = FakeResources(get_approval={"status": "pending"})
+    document = graph([("input", "input"), ("ok", "approval", {"timeout_seconds": "10"}), ("no", "prompt", {"template": "held"}),
+                      ("output", "output")], [("input", "ok"), ("ok", "no", "rejected"), ("no", "output")], timeout_seconds=3)
+    events = await collect(document, resources=resources)
+    assert final(events)["output"] == "held", "the approval expires inside the run budget"
+    assert resources.calls[0][4] <= 2

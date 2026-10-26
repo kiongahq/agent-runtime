@@ -46,6 +46,12 @@ class Resources:
     async def dataset_object(self, dataset_id: str, key: str) -> dict[str, Any]:
         raise ResourceError(503, "datasets are unavailable")
 
+    async def create_approval(self, run_id: str, node_id: str, message: str, timeout_seconds: int) -> dict[str, Any]:
+        raise ResourceError(503, "approvals are unavailable")
+
+    async def get_approval(self, approval_id: str) -> dict[str, Any]:
+        raise ResourceError(503, "approvals are unavailable")
+
 
 def _segment(value: str) -> str:
     return quote(str(value), safe="")
@@ -113,4 +119,13 @@ class GatewayResources(Resources):
     async def dataset_object(self, dataset_id: str, key: str) -> dict[str, Any]:
         query = urlencode({"key": key})
         result = await self._request("GET", f"/datasets/{_segment(dataset_id)}/object?{query}")
+        return result if isinstance(result, dict) else {}
+
+    async def create_approval(self, run_id: str, node_id: str, message: str, timeout_seconds: int) -> dict[str, Any]:
+        result = await self._request("POST", "/agent-approvals", {"run_id": run_id, "node_id": node_id,
+                                                                  "message": message, "timeout_seconds": timeout_seconds})
+        return result if isinstance(result, dict) else {}
+
+    async def get_approval(self, approval_id: str) -> dict[str, Any]:
+        result = await self._request("GET", f"/agent-approvals/{_segment(approval_id)}")
         return result if isinstance(result, dict) else {}

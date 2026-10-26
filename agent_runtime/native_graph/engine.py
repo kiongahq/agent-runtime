@@ -180,11 +180,54 @@ async def _call(coroutine):
         raise _resource_error(error) from None
 
 
+@dataclass
+class NodeResult:
+    port: str
+    value: Value
+    usage: Usage | None = None
+    iterations: int | None = None
+
+
+@dataclass
+class Budget:
+    """Step, token and time budgets shared by a run and every nested flow."""
+    max_steps: int
+    max_tokens: int
+    deadline: float
+    timeout_seconds: int
+    cancel: asyncio.Event
+    steps: int = 0
+    tokens: int = 0
+
+    def take_step(self) -> None:
+        self.steps += 1
+        if self.steps > self.max_steps:
+            raise NodeError("budget_exceeded", f"run exceeded {self.max_steps} steps")
+
+    def add_tokens(self, usage: Usage | None) -> None:
+        if usage is None:
+            return
+        self.tokens += usage.input_tokens + usage.output_tokens
+        if self.tokens > self.max_tokens:
+            raise NodeError("budget_exceeded", f"run exceeded {self.max_tokens} tokens")
+
+
+MAX_DEPTH = 3
+APPROVAL_POLL_SECONDS = 1.0
+# Failures that end the whole run even inside a node (never retried or routed).
+FATAL = {"budget_exceeded", "cancelled", "side_effects_not_approved", "invalid_graph"}
+
+
 class Executor:
-    def __init__(self, resources: Resources, llm_factory: Callable[[], Any] | None, allow_side_effects: bool):
+    def __init__(self, resources: Resources, llm_factory: Callable[[], Any] | None, allow_side_effects: bool,
+                 subflows: dict[str, dict[str, Any]], budget: Budget, run_id: str, depth: int):
         self.resources = resources
         self.llm_factory = llm_factory
         self.allow_side_effects = allow_side_effects
+        self.subflows = subflows
+        self.budget = budget
+        self.run_id = run_id
+        self.depth = depth
         self._llm = None
 
     def llm(self):
@@ -194,38 +237,48 @@ class Executor:
             self._llm = self.llm_factory()
         return self._llm
 
-    async def execute(self, node: dict[str, Any], value: Value | None, context: str,
-                      state: RunState) -> tuple[str, Value, Usage | None]:
+    async def execute(self, node: dict[str, Any], value: Value | None, context: str, state: RunState,
+                      emit: Callable[..., None], upstream: list[tuple[str, Value | None]]) -> NodeResult:
         kind = node["kind"]
         spec = registry.component(kind)
         if spec["side_effects"] and not self.allow_side_effects:
             raise NodeError("side_effects_not_approved", f"{spec['label']} can change external systems; approve side effects to run it")
-        if spec["inputs"] and value is not None:
+        if spec["inputs"] and value is not None and kind != "join":
             value = convert(value, spec["inputs"][0]["accepts"])
         if kind == "input":
-            return "out", Value("text", state.input_text), None
+            return NodeResult("out", Value("text", state.input_text))
         if kind == "output":
-            return "out", value, None
+            return NodeResult("out", value)
         if kind == "prompt":
-            return "out", Value("text", render(_required(node, "template"), state, context)), None
+            return NodeResult("out", Value("text", render(_required(node, "template"), state, context)))
         if kind == "condition":
-            try:
-                test = conditions.parse(_required(node, "expression"))
-            except conditions.ConditionError as error:
-                raise NodeError("invalid_graph", f"node {node['id']}: {error}") from None
+            test = _condition(node, "expression")
             text = to_text(value)
-            return ("true" if test(text) else "false"), Value("text", text), None
+            return NodeResult("true" if test(text) else "false", Value("text", text))
+        if kind == "router":
+            text = to_text(value)
+            for index in range(1, 5):
+                expression = _config(node, f"route_{index}").strip()
+                if expression and _condition(node, f"route_{index}")(text):
+                    return NodeResult(f"route_{index}", Value("text", text))
+            return NodeResult("default", Value("text", text))
+        if kind == "join":
+            if _config(node, "require") == "all" and any(item is None for _, item in upstream):
+                missing = ", ".join(source for source, item in upstream if item is None)
+                raise NodeError("node_error", f"join requires every branch; {missing} produced nothing")
+            return NodeResult("out", Value("json", {source: (item.data if item.type == "json" else to_text(item))
+                                                    for source, item in upstream if item is not None}))
         if kind == "extract":
-            return "out", Value("json", _extract(node, value)), None
+            return NodeResult("out", Value("json", _extract(node, value)))
         if kind == "memory":
             strategy = _config(node, "strategy")
             history = [] if strategy == "none" else state.history[-_integer(node, "turns"):]
-            return "out", Value("chat", {"text": to_text(value), "history": list(history)}), None
+            return NodeResult("out", Value("chat", {"text": to_text(value), "history": list(history)}))
         if kind == "model":
-            return await self._model(node, value, state)
+            return await self._model(node, value, state, emit)
         if kind == "tool":
             result = await _call(self.resources.invoke_function(_required(node, "tool"), {"input": to_text(value)}))
-            return "out", Value("json", result), None
+            return NodeResult("out", Value("json", result))
         if kind == "api":
             template = _config(node, "request")
             rendered = render(template, state, context) if template.strip() else ""
@@ -237,7 +290,7 @@ class Executor:
                 except json.JSONDecodeError:
                     payload = {"input": rendered}
             result = await _call(self.resources.invoke_connection(_required(node, "connection"), payload))
-            return "out", Value("json", result), None
+            return NodeResult("out", Value("json", result))
         if kind == "knowledge":
             from mlaiops_sdk.agents import HashingEmbedder
 
@@ -247,21 +300,30 @@ class Executor:
             dimensions = await _call(self.resources.knowledge_dimensions(base))
             vector = HashingEmbedder(dimensions).embed(query)
             documents = await _call(self.resources.search_knowledge(base, vector, limit))
-            return "out", Value("documents", documents), None
+            return NodeResult("out", Value("documents", documents))
         if kind == "storage":
             dataset, key = _required(node, "dataset"), _required(node, "key")
             result = await _call(self.resources.dataset_object(dataset, key))
             if result.get("truncated"):
                 raise NodeError("node_error", "object exceeds Kionga's text preview limit")
-            return "out", Value("documents", [{"text": str(result.get("content", "")),
-                                               "metadata": {"dataset": dataset, "key": key}}]), None
+            return NodeResult("out", Value("documents", [{"text": str(result.get("content", "")),
+                                                          "metadata": {"dataset": dataset, "key": key}}]))
+        if kind == "subflow":
+            output, usage = await self._nested(node, to_text(value))
+            return NodeResult("out", Value("text", output), usage)
+        if kind == "map":
+            return await self._map(node, value)
+        if kind == "loop":
+            return await self._loop(node, value)
+        if kind == "approval":
+            return await self._approval(node, value, state, context, emit)
         raise NodeError("invalid_graph", f"unsupported node type {kind}")
 
-    async def _model(self, node, value: Value, state: RunState):
+    async def _model(self, node, value: Value, state: RunState, emit: Callable[..., None]) -> NodeResult:
         model = _config(node, "model") or "llm"
         if model != "llm":
             result = await _call(self.resources.predict(model, to_text(value)))
-            return "out", Value("text", result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)), None
+            return NodeResult("out", Value("text", result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)))
         from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
         messages: list[Any] = []
@@ -276,15 +338,107 @@ class Executor:
         else:
             text = to_text(value)
         messages.append(HumanMessage(content=text))
+        reply = None
+        llm = self.llm()
         try:
-            reply = await self.llm().ainvoke(messages)
+            if hasattr(llm, "astream"):
+                # Each streamed chunk becomes a node.delta; the sum is the reply.
+                async for chunk in llm.astream(messages):
+                    reply = chunk if reply is None else reply + chunk
+                    delta = chunk.content if isinstance(chunk.content, str) else ""
+                    if delta:
+                        emit("node.delta", delta=redact(delta))
+            else:
+                reply = await llm.ainvoke(messages)
         except NodeError:
             raise
         except Exception as error:
             raise NodeError("node_error", f"model call failed: {type(error).__name__}") from None
+        if reply is None:
+            raise NodeError("node_error", "model returned no output")
         metadata = getattr(reply, "usage_metadata", None) or {}
         usage = Usage(int(metadata.get("input_tokens", 0)), int(metadata.get("output_tokens", 0)))
-        return "out", Value("text", str(reply.content)), usage
+        content = reply.content if isinstance(reply.content, str) else json.dumps(reply.content, ensure_ascii=False)
+        return NodeResult("out", Value("text", content), usage)
+
+    async def _nested(self, node: dict[str, Any], text: str) -> tuple[str, Usage]:
+        version = _required(node, "subflow")
+        graph = self.subflows.get(version)
+        if graph is None:
+            raise NodeError("invalid_graph", f"published version {version} was not provided with the run")
+        if self.depth + 1 > MAX_DEPTH:
+            raise NodeError("invalid_graph", f"flows can nest at most {MAX_DEPTH} levels")
+        nested = GraphRun(graph, input_text=text, run_id=self.run_id, history=[], allow_side_effects=self.allow_side_effects,
+                          stop_after=None, resources=self.resources, llm_factory=self.llm_factory, subflows=self.subflows,
+                          budget=self.budget, depth=self.depth + 1, emit=lambda *args, **kwargs: None)
+        outcome = await nested.drive()
+        if outcome.error is not None:
+            code, message = outcome.error
+            if code in FATAL:
+                raise NodeError(code, message)
+            raise NodeError("node_error", f"{version}: {message}")
+        return outcome.output, outcome.usage
+
+    async def _map(self, node: dict[str, Any], value: Value) -> NodeResult:
+        if value.type == "text" and value.data.lstrip().startswith("["):
+            try:  # text holding a JSON list (a typed message or a model reply) is mapped as that list
+                parsed = json.loads(value.data)
+                if isinstance(parsed, list):
+                    value = Value("json", parsed)
+            except json.JSONDecodeError:
+                pass
+        if value.type == "json" and isinstance(value.data, list):
+            items = [item if isinstance(item, str) else json.dumps(item, ensure_ascii=False) for item in value.data]
+        elif value.type == "json":
+            items = [to_text(value)]
+        else:
+            items = [line.strip() for line in to_text(value).splitlines() if line.strip()]
+        limit = _integer(node, "max_items")
+        if len(items) > limit:
+            raise NodeError("node_error", f"the list has {len(items)} items; this map allows {limit}")
+        semaphore = asyncio.Semaphore(_integer(node, "concurrency"))
+
+        async def one(item: str) -> tuple[str, Usage]:
+            async with semaphore:
+                return await self._nested(node, item)
+
+        results = await asyncio.gather(*(one(item) for item in items))
+        usage = Usage(sum(u.input_tokens for _, u in results), sum(u.output_tokens for _, u in results))
+        return NodeResult("out", Value("json", [output for output, _ in results]), usage, iterations=len(items))
+
+    async def _loop(self, node: dict[str, Any], value: Value) -> NodeResult:
+        until = _condition(node, "until")
+        current, input_tokens, output_tokens = to_text(value), 0, 0
+        limit = _integer(node, "max_iterations")
+        for iteration in range(1, limit + 1):
+            current, usage = await self._nested(node, current)
+            input_tokens, output_tokens = input_tokens + usage.input_tokens, output_tokens + usage.output_tokens
+            if until(current):
+                return NodeResult("out", Value("text", current), Usage(input_tokens, output_tokens), iterations=iteration)
+        return NodeResult("exhausted", Value("text", current), Usage(input_tokens, output_tokens), iterations=limit)
+
+    async def _approval(self, node, value: Value, state: RunState, context: str, emit) -> NodeResult:
+        message = render(_config(node, "message"), state, context)[:2000]
+        seconds = _integer(node, "timeout_seconds")
+        seconds = max(1, min(seconds, int(self.budget.deadline - time.monotonic()) - 1))
+        approval = await _call(self.resources.create_approval(self.run_id, node["id"], redact(message), seconds))
+        approval_id = str(approval.get("id", ""))
+        emit("approval.requested", approval_id=approval_id, output_preview=redact(message))
+        expires = time.monotonic() + seconds
+        status = str(approval.get("status", "pending"))
+        while status == "pending" and time.monotonic() < expires:
+            await asyncio.sleep(APPROVAL_POLL_SECONDS)
+            status = str((await _call(self.resources.get_approval(approval_id))).get("status", "pending"))
+        port = "approved" if status == "approved" else "rejected"
+        emit("approval.resolved", approval_id=approval_id, port=port)
+        return NodeResult(port, Value("text", to_text(value)))
+
+
+def _condition(node: dict[str, Any], key: str):
+    try:
+        return conditions.parse(_required(node, key))
+    except conditions.ConditionError as error:
+        raise NodeError("invalid_graph", f"node {node['id']}: {error}") from None
 
 
 def _now() -> str:
@@ -305,6 +459,176 @@ def _ancestors(graph: dict[str, Any], target: str) -> set[str]:
     return seen
 
 
+@dataclass
+class Outcome:
+    output: str = ""
+    usage: Usage = field(default_factory=Usage)
+    error: tuple[str, str] | None = None
+    cancelled: bool = False
+
+
+class GraphRun:
+    """Schedules one graph: every node whose upstream nodes have finished runs
+    concurrently. Events go to ``emit``; nested flows pass a no-op."""
+
+    def __init__(self, graph, *, input_text, run_id, history, allow_side_effects, stop_after, resources,
+                 llm_factory, subflows, budget: Budget, depth: int, emit: Callable[..., None]):
+        self.graph, self.stop_after, self.budget, self.emit = graph, stop_after, budget, emit
+        self.executor = Executor(resources, llm_factory, allow_side_effects, subflows, budget, run_id, depth)
+        self.state = RunState(input_text=input_text, history=list(history))
+        self.nodes = {node["id"]: node for node in graph["nodes"]}
+        self.inbound: dict[str, list[dict[str, Any]]] = {}
+        for edge in graph["edges"]:
+            self.inbound.setdefault(edge["to"], []).append(edge)
+        self.has_error_edge = {edge["from"] for edge in graph["edges"] if edge["from_port"] == "error"}
+        self.scope = _ancestors(graph, stop_after) if stop_after else set(self.nodes)
+        self.order = [node_id for node_id in (topological_order(graph) or []) if node_id in self.scope]
+        self.delivered: dict[tuple[str, str], Value] = {}
+        self.resolved: set[str] = set()
+
+    def _error(self, code: str, message: str) -> dict[str, str]:
+        return {"code": code, "message": redact(message, ERROR_LIMIT)}
+
+    async def drive(self) -> Outcome:
+        outcome = Outcome()
+        running: dict[str, asyncio.Task] = {}
+        terminal_value: Value | None = None
+        try:
+            while True:
+                if self.budget.cancel.is_set():
+                    outcome.cancelled = True
+                    outcome.error = ("cancelled", "run cancelled")
+                    return outcome
+                for node_id in self.order:
+                    if node_id in self.resolved or node_id in running:
+                        continue
+                    if all(edge["from"] in self.resolved for edge in self.inbound.get(node_id, [])):
+                        running[node_id] = asyncio.ensure_future(self._node(node_id))
+                if not running:
+                    break
+                waiter = asyncio.ensure_future(self.budget.cancel.wait())
+                done, _ = await asyncio.wait({*running.values(), waiter}, return_when=asyncio.FIRST_COMPLETED)
+                waiter.cancel()
+                for node_id, task in list(running.items()):
+                    if task not in done:
+                        continue
+                    del running[node_id]
+                    self.resolved.add(node_id)
+                    result = task.result()
+                    if isinstance(result, NodeError):
+                        outcome.error = (result.code, result.message)
+                        outcome.cancelled = result.code == "cancelled"
+                        return outcome
+                    if result is not None and (node_id == self.stop_after or self.nodes[node_id]["kind"] == "output"):
+                        terminal_value = result
+            if terminal_value is None:
+                outcome.error = ("node_error", "the graph produced no output; no branch reached the output node")
+                return outcome
+            outcome.output = to_text(terminal_value)[:OUTPUT_LIMIT]
+            outcome.usage = Usage(self.state.input_tokens, self.state.output_tokens)
+            return outcome
+        finally:
+            for task in running.values():
+                task.cancel()
+            for task in running.values():
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    async def _node(self, node_id: str) -> Value | NodeError | None:
+        """Run one node. Returns its terminal value, None when it produced no
+        terminal value (skipped, or routed to its error port), or the NodeError
+        that ends the run."""
+        node = self.nodes[node_id]
+        spec = registry.component(node["kind"])
+        edges = self.inbound.get(node_id, [])
+        upstream = [(edge["from"], self.delivered.get((edge["from"], edge["from_port"]))) for edge in edges]
+        values = [item for _, item in upstream if item is not None]
+        if edges and not values:
+            self.emit("node.skipped", node_id=node_id, kind=node["kind"])
+            return None
+        try:
+            self.budget.take_step()
+        except NodeError as failure:
+            return failure
+        context = "\n\n".join(to_text(value) for value in values)
+        value = values[0] if len(values) == 1 else (Value("text", context) if values else None)
+        self.emit("node.started", node_id=node_id, kind=node["kind"],
+                  input_preview=redact(to_text(value)) if value is not None else None)
+
+        def node_emit(event_type: str, **fields: Any) -> None:
+            self.emit(event_type, node_id=node_id, kind=node["kind"], **fields)
+
+        attempts = 1 + int(spec.get("retries", 0))
+        failure: NodeError | None = None
+        result: NodeResult | None = None
+        started = time.monotonic()
+        for attempt in range(1, attempts + 1):
+            remaining = self.budget.deadline - time.monotonic()
+            if remaining <= 0:
+                failure = NodeError("timeout", f"run exceeded {self.budget.timeout_seconds} seconds")
+                break
+            limit = min(float(spec["timeout_seconds"]), remaining)
+            task = asyncio.ensure_future(self.executor.execute(node, value, context, self.state, node_emit, upstream))
+            waiter = asyncio.ensure_future(self.budget.cancel.wait())
+            done, _ = await asyncio.wait({task, waiter}, timeout=limit, return_when=asyncio.FIRST_COMPLETED)
+            waiter.cancel()
+            if task not in done:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                if self.budget.cancel.is_set():
+                    node_emit("node.failed", attempt=attempt, duration_ms=int((time.monotonic() - started) * 1000),
+                              error=self._error("cancelled", "run cancelled"))
+                    return NodeError("cancelled", "run cancelled")
+                failure = NodeError("timeout", f"node exceeded {limit:.0f} seconds")
+            else:
+                try:
+                    result, failure = task.result(), None
+                except NodeError as caught:
+                    failure = caught
+                except Exception as caught:  # a handler bug must not crash the stream
+                    failure = NodeError("node_error", f"{type(caught).__name__}: {caught}")
+            if failure is None:
+                break
+            if failure.code not in RETRYABLE or attempt == attempts or self.budget.deadline <= time.monotonic():
+                break
+            node_emit("node.retrying", attempt=attempt + 1, error=self._error(failure.code, failure.message))
+        duration_ms = int((time.monotonic() - started) * 1000)
+        if failure is not None:
+            node_emit("node.failed", duration_ms=duration_ms, error=self._error(failure.code, failure.message))
+            routed = (failure.code in ROUTABLE and time.monotonic() < self.budget.deadline
+                      and node_id in self.has_error_edge and any(port["name"] == "error" for port in spec["outputs"]))
+            if not routed:
+                return failure
+            # The failure becomes the value on the error branch; out-port consumers are skipped.
+            message = Value("text", redact(f"{failure.code}: {failure.message}", ERROR_LIMIT))
+            self.state.outputs[node_id] = message
+            self.delivered[(node_id, "error")] = message
+            return None
+        usage_fields = None
+        if result.usage is not None:
+            self.state.input_tokens += result.usage.input_tokens
+            self.state.output_tokens += result.usage.output_tokens
+            usage_fields = {"input_tokens": result.usage.input_tokens, "output_tokens": result.usage.output_tokens,
+                            "cost_usd": result.usage.cost_usd}
+            try:
+                self.budget.add_tokens(result.usage)
+            except NodeError as exceeded:
+                node_emit("node.failed", duration_ms=duration_ms, usage=usage_fields,
+                          error=self._error(exceeded.code, exceeded.message))
+                return exceeded
+        self.state.outputs[node_id] = result.value
+        self.delivered[(node_id, result.port)] = result.value
+        node_emit("node.completed", duration_ms=duration_ms,
+                  port=result.port if len(spec["outputs"]) > 1 else None, iterations=result.iterations,
+                  output_preview=redact(to_text(result.value)), usage=usage_fields)
+        return result.value
+
+
 async def run_graph(
     graph: dict[str, Any],
     *,
@@ -316,144 +640,66 @@ async def run_graph(
     resources: Resources | None = None,
     llm_factory: Callable[[], Any] | None = None,
     cancel: asyncio.Event | None = None,
+    subflows: dict[str, dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Run a normalized, validated graph and yield contract events."""
-    seq = 0
+    """Run a normalized, validated graph and yield contract events.
 
-    def event(event_type: str, **fields: Any) -> dict[str, Any]:
-        nonlocal seq
-        item = {"seq": seq, "type": event_type, "run_id": run_id, "ts": _now()}
-        item.update({key: value for key, value in fields.items() if value is not None})
-        seq += 1
-        return item
+    ``subflows`` maps published version IDs to their normalized graphs for map,
+    loop and subflow nodes."""
+    seq = 0
+    queue: asyncio.Queue = asyncio.Queue()
+    done = object()
+
+    def emit(event_type: str, **fields: Any) -> None:
+        queue.put_nowait({"type": event_type, **{key: value for key, value in fields.items() if value is not None}})
 
     def error(code: str, message: str) -> dict[str, str]:
         return {"code": code, "message": redact(message, ERROR_LIMIT)}
 
     settings = graph.get("settings") or {}
-    max_steps = int(settings.get("max_steps", 50))
-    max_tokens = int(settings.get("max_tokens", 50000))
-    deadline = time.monotonic() + int(settings.get("timeout_seconds", 60))
-    cancel = cancel or asyncio.Event()
-    executor = Executor(resources or Resources(), llm_factory, allow_side_effects)
-    state = RunState(input_text=input_text, history=list(history or []))
-    nodes = {node["id"]: node for node in graph["nodes"]}
-    inbound: dict[str, list[dict[str, Any]]] = {}
-    for edge in graph["edges"]:
-        inbound.setdefault(edge["to"], []).append(edge)
-    delivered: dict[tuple[str, str], Value] = {}
-    order = topological_order(graph) or []
-    scope = _ancestors(graph, stop_after) if stop_after else set(nodes)
-    if stop_after and stop_after not in nodes:
-        yield event("run.started")
-        yield event("run.failed", error=error("invalid_graph", f"node {stop_after} does not exist"))
-        return
+    timeout_seconds = int(settings.get("timeout_seconds", 60))
+    budget = Budget(max_steps=int(settings.get("max_steps", 50)), max_tokens=int(settings.get("max_tokens", 50000)),
+                    deadline=time.monotonic() + timeout_seconds, timeout_seconds=timeout_seconds,
+                    cancel=cancel or asyncio.Event())
     started = time.monotonic()
-    steps = 0
-    yield event("run.started")
+    nodes = {node["id"] for node in graph["nodes"]}
 
-    def totals() -> dict[str, Any]:
-        usage = Usage(state.input_tokens, state.output_tokens)
-        return {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "cost_usd": usage.cost_usd}
-
-    for node_id in order:
-        if node_id not in scope:
-            continue
-        node = nodes[node_id]
-        spec = registry.component(node["kind"])
-        if cancel.is_set():
-            yield event("run.cancelled", error=error("cancelled", "run cancelled"))
-            return
-        edges = inbound.get(node_id, [])
-        values = [delivered[(edge["from"], edge["from_port"])] for edge in edges
-                  if (edge["from"], edge["from_port"]) in delivered]
-        if edges and not values:
-            yield event("node.skipped", node_id=node_id, kind=node["kind"])
-            continue
-        steps += 1
-        if steps > max_steps:
-            yield event("run.failed", error=error("budget_exceeded", f"run exceeded {max_steps} steps"))
-            return
-        context = "\n\n".join(to_text(value) for value in values)
-        value = values[0] if len(values) == 1 else (Value("text", context) if values else None)
-        yield event("node.started", node_id=node_id, kind=node["kind"],
-                    input_preview=redact(to_text(value)) if value is not None else None)
-        attempts = 1 + int(spec.get("retries", 0))
-        failure: NodeError | None = None
-        result = None
-        node_started = time.monotonic()
-        for attempt in range(1, attempts + 1):
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                failure = NodeError("timeout", f"run exceeded {settings.get('timeout_seconds', 60)} seconds")
-                break
-            budget = min(float(spec["timeout_seconds"]), remaining)
-            task = asyncio.ensure_future(executor.execute(node, value, context, state))
-            waiter = asyncio.ensure_future(cancel.wait())
-            done, _ = await asyncio.wait({task, waiter}, timeout=budget, return_when=asyncio.FIRST_COMPLETED)
-            waiter.cancel()
-            if task not in done:
-                task.cancel()
-                try:
-                    await task
-                except (asyncio.CancelledError, Exception):
-                    pass
-                if cancel.is_set():
-                    yield event("node.failed", node_id=node_id, kind=node["kind"], attempt=attempt,
-                                duration_ms=int((time.monotonic() - node_started) * 1000),
-                                error=error("cancelled", "run cancelled"))
-                    yield event("run.cancelled", error=error("cancelled", "run cancelled"))
-                    return
-                failure = NodeError("timeout", f"node exceeded {budget:.0f} seconds")
+    async def driver() -> None:
+        try:
+            emit("run.started")
+            if stop_after and stop_after not in nodes:
+                emit("run.failed", error=error("invalid_graph", f"node {stop_after} does not exist"))
+                return
+            run = GraphRun(graph, input_text=input_text, run_id=run_id, history=history or [],
+                           allow_side_effects=allow_side_effects, stop_after=stop_after, resources=resources or Resources(),
+                           llm_factory=llm_factory, subflows=subflows or {}, budget=budget, depth=1, emit=emit)
+            outcome = await run.drive()
+            if outcome.cancelled:
+                emit("run.cancelled", error=error("cancelled", "run cancelled"))
+            elif outcome.error is not None:
+                emit("run.failed", error=error(*outcome.error))
             else:
-                try:
-                    result = task.result()
-                    failure = None
-                except NodeError as caught:
-                    failure = caught
-                except Exception as caught:  # a handler bug must not crash the stream
-                    failure = NodeError("node_error", f"{type(caught).__name__}: {caught}")
-            if failure is None:
+                usage = outcome.usage
+                emit("run.completed", output=outcome.output,
+                     usage={"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens, "cost_usd": usage.cost_usd},
+                     duration_ms=int((time.monotonic() - started) * 1000))
+        finally:
+            queue.put_nowait(done)
+
+    task = asyncio.ensure_future(driver())
+    try:
+        while True:
+            item = await queue.get()
+            if item is done:
                 break
-            if failure.code not in RETRYABLE or attempt == attempts or deadline <= time.monotonic():
-                break
-            yield event("node.retrying", node_id=node_id, kind=node["kind"], attempt=attempt + 1,
-                        error=error(failure.code, failure.message))
-        duration_ms = int((time.monotonic() - node_started) * 1000)
-        if failure is not None:
-            yield event("node.failed", node_id=node_id, kind=node["kind"], duration_ms=duration_ms,
-                        error=error(failure.code, failure.message))
-            routed = (failure.code in ROUTABLE and time.monotonic() < deadline
-                      and any(edge["from"] == node_id and edge["from_port"] == "error" for edge in graph["edges"])
-                      and any(port["name"] == "error" for port in spec["outputs"]))
-            if not routed:
-                yield event("run.failed", error=error(failure.code, failure.message))
-                return
-            # The failure becomes the value on the error branch; out-port consumers are skipped.
-            message = Value("text", redact(f"{failure.code}: {failure.message}", ERROR_LIMIT))
-            state.outputs[node_id] = message
-            delivered[(node_id, "error")] = message
-            continue
-        port, output, usage = result
-        usage_fields = None
-        if usage is not None:
-            state.input_tokens += usage.input_tokens
-            state.output_tokens += usage.output_tokens
-            usage_fields = {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
-                            "cost_usd": usage.cost_usd}
-            if state.input_tokens + state.output_tokens > max_tokens:
-                message = f"run exceeded {max_tokens} tokens"
-                yield event("node.failed", node_id=node_id, kind=node["kind"], duration_ms=duration_ms,
-                            usage=usage_fields, error=error("budget_exceeded", message))
-                yield event("run.failed", error=error("budget_exceeded", message))
-                return
-        state.outputs[node_id] = output
-        delivered[(node_id, port)] = output
-        yield event("node.completed", node_id=node_id, kind=node["kind"], duration_ms=duration_ms,
-                    port=port if node["kind"] == "condition" else None,
-                    output_preview=redact(to_text(output)), usage=usage_fields)
-        if node_id == stop_after or node["kind"] == "output":
-            yield event("run.completed", output=to_text(output)[:OUTPUT_LIMIT], usage=totals(),
-                        duration_ms=int((time.monotonic() - started) * 1000))
-            return
-    yield event("run.failed", error=error("node_error", "the graph produced no output; no branch reached the output node"))
+            yield {"seq": seq, "run_id": run_id, "ts": _now(), **item}
+            seq += 1
+        await task
+    finally:
+        if not task.done():
+            budget.cancel.set()
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass

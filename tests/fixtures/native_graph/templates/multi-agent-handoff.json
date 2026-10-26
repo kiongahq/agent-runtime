@@ -1,0 +1,111 @@
+{
+  "id": "multi-agent-handoff",
+  "template_version": "1.0.0",
+  "name": "Multi-agent handoff",
+  "description": "Route each request to a specialist agent (a published version) and fall back to a general model.",
+  "graph": {
+    "schema_version": 2,
+    "name": "Multi-agent handoff",
+    "description": "Route each request to a specialist agent (a published version) and fall back to a general model.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Request",
+        "x": 40,
+        "y": 200
+      },
+      {
+        "id": "route",
+        "kind": "router",
+        "name": "Which specialist?",
+        "x": 260,
+        "y": 200,
+        "config": {
+          "route_1": "contains:refund",
+          "route_2": "contains:invoice"
+        }
+      },
+      {
+        "id": "refunds",
+        "kind": "subflow",
+        "name": "Refunds agent",
+        "x": 500,
+        "y": 60
+      },
+      {
+        "id": "billing",
+        "kind": "subflow",
+        "name": "Billing agent",
+        "x": 500,
+        "y": 200
+      },
+      {
+        "id": "general",
+        "kind": "model",
+        "name": "General assistant",
+        "x": 500,
+        "y": 340,
+        "config": {
+          "model": "llm"
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Reply",
+        "x": 760,
+        "y": 200
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "route",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "route",
+        "to": "refunds",
+        "from_port": "route_1",
+        "to_port": "in"
+      },
+      {
+        "from": "route",
+        "to": "billing",
+        "from_port": "route_2",
+        "to_port": "in"
+      },
+      {
+        "from": "route",
+        "to": "general",
+        "from_port": "default",
+        "to_port": "in"
+      },
+      {
+        "from": "refunds",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "billing",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "general",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 240,
+      "max_tokens": 50000
+    }
+  }
+}

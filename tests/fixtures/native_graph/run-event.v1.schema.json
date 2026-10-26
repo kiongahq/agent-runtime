@@ -1,45 +1,135 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/kiongahq/contracts/v1.1.0/agent-graph/run-event.v1.schema.json",
+  "$id": "https://raw.githubusercontent.com/kiongahq/contracts/v1.3.0/agent-graph/run-event.v1.schema.json",
   "title": "Kionga native agent run event",
   "description": "One event in a native graph run, emitted by agent-runtime as newline-delimited JSON and served by the gateway as Server-Sent Events or a polling page. Previews are redacted and truncated to 2000 characters before they leave the runtime.",
   "type": "object",
-  "required": ["seq", "type", "run_id", "ts"],
+  "required": [
+    "seq",
+    "type",
+    "run_id",
+    "ts"
+  ],
   "additionalProperties": false,
   "properties": {
-    "seq": {"type": "integer", "minimum": 0, "description": "Strictly increasing within a run, starting at 0."},
-    "type": {
-      "enum": ["run.started", "node.started", "node.completed", "node.skipped", "node.failed", "node.retrying",
-               "run.completed", "run.failed", "run.cancelled"]
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Strictly increasing within a run, starting at 0."
     },
-    "run_id": {"type": "string", "pattern": "^agr-[a-f0-9]{24}$"},
-    "ts": {"type": "string", "format": "date-time"},
-    "node_id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$"},
-    "kind": {"type": "string"},
-    "attempt": {"type": "integer", "minimum": 1},
-    "port": {"type": "string", "description": "The output port a node.completed event selected (condition branches)."},
-    "duration_ms": {"type": "integer", "minimum": 0},
-    "input_preview": {"type": "string", "maxLength": 2000},
-    "output_preview": {"type": "string", "maxLength": 2000},
-    "output": {"type": "string", "maxLength": 65536, "description": "The final reply, on run.completed only."},
+    "type": {
+      "enum": [
+        "run.started",
+        "node.started",
+        "node.completed",
+        "node.skipped",
+        "node.failed",
+        "node.delta",
+        "approval.requested",
+        "approval.resolved",
+        "node.retrying",
+        "run.completed",
+        "run.failed",
+        "run.cancelled"
+      ]
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^agr-[a-f0-9]{24}$"
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "node_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "port": {
+      "type": "string",
+      "description": "The output port a node.completed event selected (condition branches)."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "input_preview": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "output_preview": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "output": {
+      "type": "string",
+      "maxLength": 65536,
+      "description": "The final reply, on run.completed only."
+    },
     "usage": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "input_tokens": {"type": "integer", "minimum": 0},
-        "output_tokens": {"type": "integer", "minimum": 0},
-        "cost_usd": {"type": "number", "minimum": 0}
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        }
       }
     },
     "error": {
       "type": "object",
-      "required": ["code", "message"],
+      "required": [
+        "code",
+        "message"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": {"enum": ["timeout", "budget_exceeded", "resource_denied", "resource_unavailable", "invalid_graph",
-                          "side_effects_not_approved", "node_error", "cancelled"]},
-        "message": {"type": "string", "maxLength": 500}
+        "code": {
+          "enum": [
+            "timeout",
+            "budget_exceeded",
+            "resource_denied",
+            "resource_unavailable",
+            "invalid_graph",
+            "side_effects_not_approved",
+            "node_error",
+            "cancelled"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 500
+        }
       }
+    },
+    "delta": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Incremental model text on node.delta; deltas are best-effort and node.completed carries the full output."
+    },
+    "approval_id": {
+      "type": "string",
+      "pattern": "^apr-[a-f0-9]{24}$"
+    },
+    "iterations": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Loop iterations or map items run, on node.completed."
     }
   }
 }
