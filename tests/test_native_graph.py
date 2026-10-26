@@ -398,10 +398,12 @@ async def test_truncated_dataset_objects_fail_instead_of_answering_from_a_fragme
 
 
 def test_redaction_removes_common_secret_shapes_and_truncates():
-    text = ('Authorization: Bearer abcdefghijklmnop sk-live1234567890 AKIAABCDEFGHIJKLMNOP '
+    # Fake credentials are assembled at runtime so secret scanners do not flag the test.
+    aws_key = "AKIA" + "ABCDEFGHIJKLMNOP"
+    text = (f'Authorization: Bearer abcdefghijklmnop sk-live1234567890 {aws_key} '
             'password=hunter2 {"api_key": "zzz-secret"}')
     clean = redact(text)
-    for secret in ("abcdefghijklmnop", "sk-live1234567890", "AKIAABCDEFGHIJKLMNOP", "hunter2", "zzz-secret"):
+    for secret in ("abcdefghijklmnop", "sk-live1234567890", aws_key, "hunter2", "zzz-secret"):
         assert secret not in clean
     assert len(redact("x" * 5000)) == 2000
 

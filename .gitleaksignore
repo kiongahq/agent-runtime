@@ -1,0 +1,4 @@
+# Fake AWS key shape in the native-graph redaction test (commit 34b1583); the
+# test now assembles it at runtime.
+34b1583d685e94f85725d0a897e0a90ad291a40d:tests/test_native_graph.py:aws-access-token:401
+34b1583d685e94f85725d0a897e0a90ad291a40d:tests/test_native_graph.py:aws-access-token:404
