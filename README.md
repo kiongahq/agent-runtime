@@ -71,7 +71,10 @@ that follow the [agent graph contract](https://github.com/kiongahq/contracts/tre
 typed ports, a deterministic condition grammar, per-node timeouts and retries,
 and run budgets (`max_steps`, `timeout_seconds`, `max_tokens`). A node with
 inbound edges runs when at least one of them carried a value; a node with no
-inbound edges (the input, or a source such as a dataset loader) always runs.
+inbound edges (the input, or a source such as a dataset loader) always runs. A failing
+`model`, `tool`, `api`, `knowledge` or `storage` node with a connected `error`
+port sends its redacted failure message down that branch and the run continues;
+`extract` picks a JSON field by dotted path.
 Every resource call (models, tools, API connections, knowledge bases, datasets)
 goes through the Kionga gateway, which checks project access on each call and
 adds credentials server-side; no secret ever enters a graph or this process.

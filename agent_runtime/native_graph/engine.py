@@ -33,6 +33,9 @@ PREVIEW_LIMIT = 2000
 OUTPUT_LIMIT = 65536
 ERROR_LIMIT = 500
 RETRYABLE = {"timeout", "node_error", "resource_unavailable"}
+# Failures a connected ``error`` port may absorb (contracts README, "Error ports").
+ROUTABLE = {"timeout", "node_error", "resource_unavailable", "resource_denied"}
+PATH = re.compile(r"^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$")
 PLACEHOLDER = re.compile(r"\{([a-z][a-z0-9-]{0,62})\}")
 SECRET_PATTERNS = [
     (re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}"), "Bearer [REDACTED]"),
@@ -143,6 +146,28 @@ def _integer(node: dict[str, Any], key: str) -> int:
     return value
 
 
+def _extract(node: dict[str, Any], value: Value) -> Any:
+    path = _required(node, "path")
+    if len(path) > 200 or not PATH.match(path):
+        raise NodeError("invalid_graph", f"node {node['id']} has an invalid field path")
+    current = value.data
+    if value.type == "text":
+        try:
+            current = json.loads(current)
+        except json.JSONDecodeError:
+            raise NodeError("node_error", f"node {node['id']} input is not JSON") from None
+    for part in path.split("."):
+        if isinstance(current, dict) and part in current:
+            current = current[part]
+        elif isinstance(current, list) and part.isdigit() and int(part) < len(current):
+            current = current[int(part)]
+        else:
+            if _config(node, "missing") == "empty":
+                return None
+            raise NodeError("node_error", f"field {path} is missing")
+    return current
+
+
 def _resource_error(error: ResourceError) -> NodeError:
     code = "resource_denied" if error.status in (401, 403, 404) else "resource_unavailable"
     return NodeError(code, str(error))
@@ -190,6 +215,8 @@ class Executor:
                 raise NodeError("invalid_graph", f"node {node['id']}: {error}") from None
             text = to_text(value)
             return ("true" if test(text) else "false"), Value("text", text), None
+        if kind == "extract":
+            return "out", Value("json", _extract(node, value)), None
         if kind == "memory":
             strategy = _config(node, "strategy")
             history = [] if strategy == "none" else state.history[-_integer(node, "turns"):]
@@ -396,8 +423,17 @@ async def run_graph(
         if failure is not None:
             yield event("node.failed", node_id=node_id, kind=node["kind"], duration_ms=duration_ms,
                         error=error(failure.code, failure.message))
-            yield event("run.failed", error=error(failure.code, failure.message))
-            return
+            routed = (failure.code in ROUTABLE and time.monotonic() < deadline
+                      and any(edge["from"] == node_id and edge["from_port"] == "error" for edge in graph["edges"])
+                      and any(port["name"] == "error" for port in spec["outputs"]))
+            if not routed:
+                yield event("run.failed", error=error(failure.code, failure.message))
+                return
+            # The failure becomes the value on the error branch; out-port consumers are skipped.
+            message = Value("text", redact(f"{failure.code}: {failure.message}", ERROR_LIMIT))
+            state.outputs[node_id] = message
+            delivered[(node_id, "error")] = message
+            continue
         port, output, usage = result
         usage_fields = None
         if usage is not None:

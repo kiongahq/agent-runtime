@@ -432,3 +432,60 @@ async def test_every_starter_template_runs_once_resources_are_chosen(path):
     events = await collect(document, text="I need a refund", resources=FakeResources(), allow_side_effects=True)
     assert final(events)["type"] == "run.completed", final(events)
     assert final(events)["output"]
+
+
+# Error ports and extract (registry 1.1.0) ----------------------------------------
+
+@pytest.mark.asyncio
+async def test_connected_error_port_routes_the_failure_and_skips_the_out_branch():
+    resources = FakeResources(invoke_connection=ResourceError(403, "Kionga rejected this resource request (403)"))
+    document = graph([("input", "input"), ("call", "api", {"connection": "api-1"}),
+                      ("pick", "extract", {"path": "status"}),
+                      ("sorry", "prompt", {"template": "Fallback because {call}"}), ("output", "output")],
+                     [("input", "call"), ("call", "pick"), ("call", "sorry", "error"), ("pick", "output"), ("sorry", "output")])
+    events = await collect(document, resources=resources, allow_side_effects=True)
+    assert [e["type"] for e in by_node(events, "call")] == ["node.started", "node.failed"]
+    assert by_node(events, "pick")[0]["type"] == "node.skipped"
+    done = final(events)
+    assert done["type"] == "run.completed"
+    assert done["output"].startswith("Fallback because resource_denied: ")
+
+
+@pytest.mark.asyncio
+async def test_unconnected_error_port_and_policy_failures_still_end_the_run():
+    resources = FakeResources(invoke_connection=ResourceError(503, "down"))
+    plain = graph([("input", "input"), ("call", "api", {"connection": "api-1"}), ("output", "output")],
+                  [("input", "call"), ("call", "output")])
+    events = await collect(plain, resources=resources, allow_side_effects=True)
+    assert final(events)["type"] == "run.failed" and final(events)["error"]["code"] == "resource_unavailable"
+    guarded = graph([("input", "input"), ("call", "api", {"connection": "api-1"}),
+                     ("sorry", "prompt", {"template": "fallback"}), ("output", "output")],
+                    [("input", "call"), ("call", "output"), ("call", "sorry", "error"), ("sorry", "output")])
+    events = await collect(guarded, resources=FakeResources())
+    assert final(events)["error"]["code"] == "side_effects_not_approved", "approval refusals are never routed"
+
+
+@pytest.mark.parametrize("path, missing, data, expected", [
+    ("result.items.1.name", "fail", {"result": {"items": [{"name": "a"}, {"name": "b"}]}}, "b"),
+    ("status", "fail", {"status": {"code": 7}}, '{"code":7}'),
+    ("absent", "empty", {"status": 1}, "null"),
+])
+@pytest.mark.asyncio
+async def test_extract_picks_fields_from_json(path, missing, data, expected):
+    resources = FakeResources(invoke_connection=data)
+    document = graph([("input", "input"), ("call", "api", {"connection": "api-1"}),
+                      ("pick", "extract", {"path": path, "missing": missing}), ("output", "output")],
+                     [("input", "call"), ("call", "pick"), ("pick", "output")])
+    events = await collect(document, resources=resources, allow_side_effects=True)
+    assert final(events)["type"] == "run.completed", final(events)
+    assert final(events)["output"] == expected
+
+
+@pytest.mark.asyncio
+async def test_extract_failures_are_node_errors():
+    document = graph([("input", "input"), ("pick", "extract", {"path": "a.b"}), ("output", "output")],
+                     [("input", "pick"), ("pick", "output")])
+    events = await collect(document, text='{"a": {"c": 1}}')
+    assert final(events)["error"]["code"] == "node_error" and "a.b is missing" in final(events)["error"]["message"]
+    events = await collect(document, text="not json")
+    assert "not JSON" in final(events)["error"]["message"]

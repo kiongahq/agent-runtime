@@ -1,5 +1,5 @@
 {
-  "registry_version": "1.0.0",
+  "registry_version": "1.1.0",
   "port_types": {
     "text": "Plain text.",
     "chat": "A conversation turn: text plus prior session turns.",
@@ -7,20 +7,68 @@
     "documents": "An ordered list of retrieved or loaded documents ({text, score?, metadata?})."
   },
   "conversions": [
-    {"from": "json", "to": "text", "rule": "Serialize as compact JSON."},
-    {"from": "documents", "to": "text", "rule": "Join document texts with a blank line."},
-    {"from": "chat", "to": "text", "rule": "Use the newest turn's text."},
-    {"from": "text", "to": "chat", "rule": "Wrap as a single user turn."},
-    {"from": "text", "to": "json", "rule": "Parse as JSON; otherwise wrap as {\"input\": text}."}
+    {
+      "from": "json",
+      "to": "text",
+      "rule": "Serialize as compact JSON."
+    },
+    {
+      "from": "documents",
+      "to": "text",
+      "rule": "Join document texts with a blank line."
+    },
+    {
+      "from": "chat",
+      "to": "text",
+      "rule": "Use the newest turn's text."
+    },
+    {
+      "from": "text",
+      "to": "chat",
+      "rule": "Wrap as a single user turn."
+    },
+    {
+      "from": "text",
+      "to": "json",
+      "rule": "Parse as JSON; otherwise wrap as {\"input\": text}."
+    }
   ],
   "condition_operators": [
-    {"op": "contains", "argument": true, "description": "Input contains the argument (case-insensitive)."},
-    {"op": "not_contains", "argument": true, "description": "Input does not contain the argument (case-insensitive)."},
-    {"op": "equals", "argument": true, "description": "Trimmed input equals the argument (case-insensitive)."},
-    {"op": "matches", "argument": true, "description": "Input matches the regular expression (RE2 subset, at most 200 characters)."},
-    {"op": "empty", "argument": false, "description": "Trimmed input is empty."},
-    {"op": "not_empty", "argument": false, "description": "Trimmed input is not empty."},
-    {"op": "longer_than", "argument": true, "description": "Input has more characters than the integer argument."}
+    {
+      "op": "contains",
+      "argument": true,
+      "description": "Input contains the argument (case-insensitive)."
+    },
+    {
+      "op": "not_contains",
+      "argument": true,
+      "description": "Input does not contain the argument (case-insensitive)."
+    },
+    {
+      "op": "equals",
+      "argument": true,
+      "description": "Trimmed input equals the argument (case-insensitive)."
+    },
+    {
+      "op": "matches",
+      "argument": true,
+      "description": "Input matches the regular expression (RE2 subset, at most 200 characters)."
+    },
+    {
+      "op": "empty",
+      "argument": false,
+      "description": "Trimmed input is empty."
+    },
+    {
+      "op": "not_empty",
+      "argument": false,
+      "description": "Trimmed input is not empty."
+    },
+    {
+      "op": "longer_than",
+      "argument": true,
+      "description": "Input has more characters than the integer argument."
+    }
   ],
   "template_variables": {
     "{input}": "The run's input message.",
@@ -29,113 +77,470 @@
   },
   "components": [
     {
-      "kind": "input", "version": "1.0.0", "category": "Inputs and outputs", "label": "Chat input",
+      "kind": "input",
+      "version": "1.0.0",
+      "category": "Inputs and outputs",
+      "label": "Chat input",
       "description": "The message a user sends to the agent. Every graph has exactly one.",
-      "inputs": [], "outputs": [{"name": "out", "type": "text"}],
-      "config": [], "side_effects": false, "timeout_seconds": 1, "retries": 0, "singleton": true
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "text"
+        }
+      ],
+      "config": [],
+      "side_effects": false,
+      "timeout_seconds": 1,
+      "retries": 0,
+      "singleton": true
     },
     {
-      "kind": "output", "version": "1.0.0", "category": "Inputs and outputs", "label": "Chat output",
+      "kind": "output",
+      "version": "1.0.0",
+      "category": "Inputs and outputs",
+      "label": "Chat output",
       "description": "The agent's reply. Every graph has exactly one.",
-      "inputs": [{"name": "in", "accepts": ["text", "chat", "json", "documents"], "required": true}], "outputs": [],
-      "config": [], "side_effects": false, "timeout_seconds": 1, "retries": 0, "singleton": true
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [],
+      "config": [],
+      "side_effects": false,
+      "timeout_seconds": 1,
+      "retries": 0,
+      "singleton": true
     },
     {
-      "kind": "prompt", "version": "1.0.0", "category": "Prompts", "label": "Prompt",
+      "kind": "prompt",
+      "version": "1.0.0",
+      "category": "Prompts",
+      "label": "Prompt",
       "description": "Render a text template from the input and upstream outputs.",
-      "inputs": [{"name": "in", "accepts": ["text", "chat", "json", "documents"], "required": false}],
-      "outputs": [{"name": "out", "type": "text"}],
-      "config": [
-        {"key": "template", "label": "Prompt template", "type": "template", "required": true, "max_length": 16000,
-         "help": "Use {input} for the message, {context} for inbound values, or {node-id} for one upstream node."}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": false
+        }
       ],
-      "side_effects": false, "timeout_seconds": 1, "retries": 0
+      "outputs": [
+        {
+          "name": "out",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "template",
+          "label": "Prompt template",
+          "type": "template",
+          "required": true,
+          "max_length": 16000,
+          "help": "Use {input} for the message, {context} for inbound values, or {node-id} for one upstream node."
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 1,
+      "retries": 0
     },
     {
-      "kind": "model", "version": "1.0.0", "category": "Models", "label": "Model",
+      "kind": "model",
+      "version": "1.0.0",
+      "category": "Models",
+      "label": "Model",
       "description": "Generate text with the platform chat model, or call a deployed Kionga model.",
-      "inputs": [{"name": "in", "accepts": ["text", "chat"], "required": true}],
-      "outputs": [{"name": "out", "type": "text"}],
-      "config": [
-        {"key": "model", "label": "Model", "type": "resource", "resource": "model", "required": false, "default": "llm",
-         "help": "llm uses the platform chat model configured for the runtime. A Kionga model ID calls that deployed model's endpoint."},
-        {"key": "system", "label": "System instructions", "type": "template", "required": false, "max_length": 8000,
-         "help": "Optional instructions sent before the input when using the platform chat model."}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat"
+          ],
+          "required": true
+        }
       ],
-      "side_effects": false, "timeout_seconds": 60, "retries": 1
+      "outputs": [
+        {
+          "name": "out",
+          "type": "text"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "model",
+          "label": "Model",
+          "type": "resource",
+          "resource": "model",
+          "required": false,
+          "default": "llm",
+          "help": "llm uses the platform chat model configured for the runtime. A Kionga model ID calls that deployed model's endpoint."
+        },
+        {
+          "key": "system",
+          "label": "System instructions",
+          "type": "template",
+          "required": false,
+          "max_length": 8000,
+          "help": "Optional instructions sent before the input when using the platform chat model."
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 60,
+      "retries": 1
     },
     {
-      "kind": "tool", "version": "1.0.0", "category": "Tools and APIs", "label": "Kionga tool",
+      "kind": "tool",
+      "version": "1.0.0",
+      "category": "Tools and APIs",
+      "label": "Kionga tool",
       "description": "Invoke a registered Kionga tool through its serverless function.",
-      "inputs": [{"name": "in", "accepts": ["text", "json"], "required": true}],
-      "outputs": [{"name": "out", "type": "json"}],
-      "config": [
-        {"key": "tool", "label": "Tool", "type": "resource", "resource": "tool", "required": true,
-         "help": "A tool registered in the Kionga catalog. Kionga checks your access on every call."}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "json"
+          ],
+          "required": true
+        }
       ],
-      "side_effects": true, "timeout_seconds": 30, "retries": 0
+      "outputs": [
+        {
+          "name": "out",
+          "type": "json"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "tool",
+          "label": "Tool",
+          "type": "resource",
+          "resource": "tool",
+          "required": true,
+          "help": "A tool registered in the Kionga catalog. Kionga checks your access on every call."
+        }
+      ],
+      "side_effects": true,
+      "timeout_seconds": 30,
+      "retries": 0
     },
     {
-      "kind": "api", "version": "1.0.0", "category": "Tools and APIs", "label": "API call",
+      "kind": "api",
+      "version": "1.0.0",
+      "category": "Tools and APIs",
+      "label": "API call",
       "description": "Call an administrator-approved API connection; Kionga adds the credential server-side.",
-      "inputs": [{"name": "in", "accepts": ["text", "json"], "required": true}],
-      "outputs": [{"name": "out", "type": "json"}],
-      "config": [
-        {"key": "connection", "label": "API connection", "type": "resource", "resource": "connection", "required": true,
-         "help": "An API connection registered for this project."},
-        {"key": "request", "label": "Request body template", "type": "template", "required": false, "max_length": 16000,
-         "help": "Rendered, then sent as JSON. Text that is not JSON is sent as {\"input\": text}. Empty sends {\"input\": {input}}."}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "json"
+          ],
+          "required": true
+        }
       ],
-      "side_effects": true, "timeout_seconds": 15, "retries": 0
+      "outputs": [
+        {
+          "name": "out",
+          "type": "json"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "connection",
+          "label": "API connection",
+          "type": "resource",
+          "resource": "connection",
+          "required": true,
+          "help": "An API connection registered for this project."
+        },
+        {
+          "key": "request",
+          "label": "Request body template",
+          "type": "template",
+          "required": false,
+          "max_length": 16000,
+          "help": "Rendered, then sent as JSON. Text that is not JSON is sent as {\"input\": text}. Empty sends {\"input\": {input}}."
+        }
+      ],
+      "side_effects": true,
+      "timeout_seconds": 15,
+      "retries": 0
     },
     {
-      "kind": "knowledge", "version": "1.0.0", "category": "Knowledge and data", "label": "Knowledge base",
+      "kind": "knowledge",
+      "version": "1.0.0",
+      "category": "Knowledge and data",
+      "label": "Knowledge base",
       "description": "Search a project knowledge base (Qdrant or pgvector) and return matching documents.",
-      "inputs": [{"name": "in", "accepts": ["text", "chat"], "required": false}],
-      "outputs": [{"name": "out", "type": "documents"}],
-      "config": [
-        {"key": "knowledge_base", "label": "Knowledge base", "type": "resource", "resource": "knowledge_base", "required": true,
-         "help": "Queries are embedded with the SDK hashing embedder at the base's dimensions; ingest with the same embedder."},
-        {"key": "query", "label": "Search query", "type": "template", "required": false, "default": "{input}", "max_length": 4000,
-         "help": "Use {input} to search with the agent message."},
-        {"key": "limit", "label": "Results", "type": "integer", "required": false, "default": "4", "minimum": 1, "maximum": 20}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat"
+          ],
+          "required": false
+        }
       ],
-      "side_effects": false, "timeout_seconds": 15, "retries": 1
+      "outputs": [
+        {
+          "name": "out",
+          "type": "documents"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "knowledge_base",
+          "label": "Knowledge base",
+          "type": "resource",
+          "resource": "knowledge_base",
+          "required": true,
+          "help": "Queries are embedded with the SDK hashing embedder at the base's dimensions; ingest with the same embedder."
+        },
+        {
+          "key": "query",
+          "label": "Search query",
+          "type": "template",
+          "required": false,
+          "default": "{input}",
+          "max_length": 4000,
+          "help": "Use {input} to search with the agent message."
+        },
+        {
+          "key": "limit",
+          "label": "Results",
+          "type": "integer",
+          "required": false,
+          "default": "4",
+          "minimum": 1,
+          "maximum": 20
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 15,
+      "retries": 1
     },
     {
-      "kind": "storage", "version": "1.0.0", "category": "Knowledge and data", "label": "Dataset object",
+      "kind": "storage",
+      "version": "1.0.0",
+      "category": "Knowledge and data",
+      "label": "Dataset object",
       "description": "Load a text object from an authorized project dataset in RustFS object storage.",
-      "inputs": [{"name": "in", "accepts": ["text", "chat", "json", "documents"], "required": false}],
-      "outputs": [{"name": "out", "type": "documents"}],
-      "config": [
-        {"key": "dataset", "label": "Dataset", "type": "resource", "resource": "dataset", "required": true,
-         "help": "A dataset assigned to this project; Kionga confines reads to its prefix."},
-        {"key": "key", "label": "Object key", "type": "string", "required": true, "max_length": 1024,
-         "help": "Key relative to the dataset prefix."}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": false
+        }
       ],
-      "side_effects": false, "timeout_seconds": 15, "retries": 1
+      "outputs": [
+        {
+          "name": "out",
+          "type": "documents"
+        },
+        {
+          "name": "error",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "dataset",
+          "label": "Dataset",
+          "type": "resource",
+          "resource": "dataset",
+          "required": true,
+          "help": "A dataset assigned to this project; Kionga confines reads to its prefix."
+        },
+        {
+          "key": "key",
+          "label": "Object key",
+          "type": "string",
+          "required": true,
+          "max_length": 1024,
+          "help": "Key relative to the dataset prefix."
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 15,
+      "retries": 1
     },
     {
-      "kind": "condition", "version": "1.0.0", "category": "Logic", "label": "Condition",
+      "kind": "condition",
+      "version": "1.0.0",
+      "category": "Logic",
+      "label": "Condition",
       "description": "Route the inbound value to the true or false branch. Only the taken branch runs.",
-      "inputs": [{"name": "in", "accepts": ["text", "chat", "json", "documents"], "required": true}],
-      "outputs": [{"name": "true", "type": "text"}, {"name": "false", "type": "text"}],
-      "config": [
-        {"key": "expression", "label": "Condition", "type": "expression", "required": true, "max_length": 300,
-         "help": "operator:argument, for example contains:refund, matches:^order-[0-9]+$, longer_than:200, empty."}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat",
+            "json",
+            "documents"
+          ],
+          "required": true
+        }
       ],
-      "side_effects": false, "timeout_seconds": 1, "retries": 0
+      "outputs": [
+        {
+          "name": "true",
+          "type": "text"
+        },
+        {
+          "name": "false",
+          "type": "text"
+        }
+      ],
+      "config": [
+        {
+          "key": "expression",
+          "label": "Condition",
+          "type": "expression",
+          "required": true,
+          "max_length": 300,
+          "help": "operator:argument, for example contains:refund, matches:^order-[0-9]+$, longer_than:200, empty."
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 1,
+      "retries": 0
     },
     {
-      "kind": "memory", "version": "1.0.0", "category": "Memory", "label": "Conversation memory",
+      "kind": "memory",
+      "version": "1.0.0",
+      "category": "Memory",
+      "label": "Conversation memory",
       "description": "Prefix the input with the most recent turns of this session.",
-      "inputs": [{"name": "in", "accepts": ["text", "chat"], "required": true}],
-      "outputs": [{"name": "out", "type": "chat"}],
-      "config": [
-        {"key": "strategy", "label": "Strategy", "type": "enum", "options": ["window", "none"], "required": false, "default": "window"},
-        {"key": "turns", "label": "Turns to keep", "type": "integer", "required": false, "default": "6", "minimum": 1, "maximum": 50}
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "text",
+            "chat"
+          ],
+          "required": true
+        }
       ],
-      "side_effects": false, "timeout_seconds": 5, "retries": 0
+      "outputs": [
+        {
+          "name": "out",
+          "type": "chat"
+        }
+      ],
+      "config": [
+        {
+          "key": "strategy",
+          "label": "Strategy",
+          "type": "enum",
+          "options": [
+            "window",
+            "none"
+          ],
+          "required": false,
+          "default": "window"
+        },
+        {
+          "key": "turns",
+          "label": "Turns to keep",
+          "type": "integer",
+          "required": false,
+          "default": "6",
+          "minimum": 1,
+          "maximum": 50
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 5,
+      "retries": 0
+    },
+    {
+      "kind": "extract",
+      "version": "1.0.0",
+      "category": "Logic",
+      "label": "Extract field",
+      "description": "Pick one field out of a JSON value, such as a tool or API result.",
+      "inputs": [
+        {
+          "name": "in",
+          "accepts": [
+            "json",
+            "text"
+          ],
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out",
+          "type": "json"
+        }
+      ],
+      "config": [
+        {
+          "key": "path",
+          "label": "Field path",
+          "type": "string",
+          "required": true,
+          "max_length": 200,
+          "pattern": "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$",
+          "help": "Dot-separated keys and list indexes, for example result.items.0.name."
+        },
+        {
+          "key": "missing",
+          "label": "When the field is missing",
+          "type": "enum",
+          "options": [
+            "fail",
+            "empty"
+          ],
+          "required": false,
+          "default": "fail"
+        }
+      ],
+      "side_effects": false,
+      "timeout_seconds": 1,
+      "retries": 0
     }
-  ]
+  ],
+  "error_port": "Components with an error output emit the failure message there when the node fails with node_error, resource_denied, resource_unavailable or timeout; if the port is connected the run continues on that branch."
 }
