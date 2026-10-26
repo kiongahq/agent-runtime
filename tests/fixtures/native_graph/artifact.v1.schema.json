@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/kiongahq/contracts/v1.1.0/agent-graph/artifact.v1.schema.json",
+  "title": "Kionga published native agent version",
+  "description": "An immutable, deployable snapshot of a native agent graph. content_sha256 is the SHA-256 of the canonical behavior document (see README); the runtime refuses an artifact whose hash does not match.",
+  "type": "object",
+  "required": ["artifact_version", "id", "design_id", "project_id", "version", "content_sha256", "registry_version",
+               "graph", "source_revision", "author", "created_at", "runtime"],
+  "additionalProperties": false,
+  "properties": {
+    "artifact_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^agv-[a-f0-9]{24}$"},
+    "design_id": {"type": "string", "pattern": "^agd-[a-f0-9]{24}$"},
+    "project_id": {"type": "string", "minLength": 1},
+    "version": {"type": "integer", "minimum": 1},
+    "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "registry_version": {"type": "string"},
+    "graph": {"$ref": "v2.schema.json"},
+    "source_revision": {"type": "integer", "minimum": 1},
+    "author": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "notes": {"type": "string", "maxLength": 1000},
+    "runtime": {
+      "type": "object",
+      "required": ["graph_module"],
+      "additionalProperties": false,
+      "properties": {
+        "graph_module": {"const": "agents.native_graph:build_native"},
+        "image": {"type": "string"}
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["id", "pass_rate", "cases", "gate", "passed"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^age-[a-f0-9]{24}$"},
+        "pass_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "cases": {"type": "integer", "minimum": 1},
+        "gate": {"type": "number", "minimum": 0, "maximum": 1},
+        "passed": {"type": "boolean"}
+      }
+    }
+  }
+}

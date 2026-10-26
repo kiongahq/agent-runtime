@@ -1,0 +1,128 @@
+{
+  "id": "customer-support",
+  "template_version": "1.0.0",
+  "name": "Customer support",
+  "description": "Remember the conversation and escalate refund requests to a dedicated prompt.",
+  "graph": {
+    "schema_version": 2,
+    "name": "Customer support",
+    "description": "Remember the conversation and escalate refund requests to a dedicated prompt.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Customer message",
+        "x": 40,
+        "y": 180
+      },
+      {
+        "id": "memory",
+        "kind": "memory",
+        "name": "Recent turns",
+        "x": 260,
+        "y": 180,
+        "config": {
+          "strategy": "window",
+          "turns": "6"
+        }
+      },
+      {
+        "id": "route",
+        "kind": "condition",
+        "name": "Refund request?",
+        "x": 480,
+        "y": 180,
+        "config": {
+          "expression": "contains:refund"
+        }
+      },
+      {
+        "id": "refund",
+        "kind": "prompt",
+        "name": "Refund policy prompt",
+        "x": 720,
+        "y": 80,
+        "config": {
+          "template": "The customer is asking about a refund. Explain that refunds are processed within 5 business days and ask for the order number if it is missing.\n\nConversation:\n{context}"
+        }
+      },
+      {
+        "id": "general",
+        "kind": "prompt",
+        "name": "Support prompt",
+        "x": 720,
+        "y": 280,
+        "config": {
+          "template": "Answer the customer helpfully and briefly.\n\nConversation:\n{context}"
+        }
+      },
+      {
+        "id": "model",
+        "kind": "model",
+        "name": "Reply",
+        "x": 960,
+        "y": 180,
+        "config": {
+          "model": "llm",
+          "system": "You are a courteous support agent."
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Reply",
+        "x": 1200,
+        "y": 180
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "memory",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "memory",
+        "to": "route",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "route",
+        "to": "refund",
+        "from_port": "true",
+        "to_port": "in"
+      },
+      {
+        "from": "route",
+        "to": "general",
+        "from_port": "false",
+        "to_port": "in"
+      },
+      {
+        "from": "refund",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "general",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "model",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 60,
+      "max_tokens": 50000
+    }
+  }
+}

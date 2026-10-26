@@ -56,6 +56,7 @@ ENV PYTHONPATH=/app \
     LANGFLOW_CONFIG_DIR=/tmp/kionga-langflow-runtime \
     MLAIOPS_RUNTIME_PORT=9000
 
-EXPOSE 9000
+# python -m agent_runtime.designer serves the Agent Designer playground on 9100.
+EXPOSE 9000 9100
 USER nobody
 ENTRYPOINT ["python", "-m", "agent_runtime"]

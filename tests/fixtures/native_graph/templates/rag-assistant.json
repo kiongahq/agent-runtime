@@ -1,0 +1,96 @@
+{
+  "id": "rag-assistant",
+  "template_version": "1.0.0",
+  "name": "RAG assistant",
+  "description": "Answer from a Kionga knowledge base with cited context.",
+  "graph": {
+    "schema_version": 2,
+    "name": "RAG assistant",
+    "description": "Answer from a Kionga knowledge base with cited context.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Question",
+        "x": 40,
+        "y": 160
+      },
+      {
+        "id": "retrieve",
+        "kind": "knowledge",
+        "name": "Search knowledge",
+        "x": 280,
+        "y": 60,
+        "config": {
+          "query": "{input}",
+          "limit": "4"
+        }
+      },
+      {
+        "id": "prompt",
+        "kind": "prompt",
+        "name": "Grounded prompt",
+        "x": 520,
+        "y": 160,
+        "config": {
+          "template": "Answer using only the context below. If the context does not contain the answer, say you do not know.\n\nContext:\n{retrieve}\n\nQuestion: {input}"
+        }
+      },
+      {
+        "id": "model",
+        "kind": "model",
+        "name": "Answer",
+        "x": 760,
+        "y": 160,
+        "config": {
+          "model": "llm",
+          "system": "You are a precise assistant that cites the context it used."
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Answer",
+        "x": 1000,
+        "y": 160
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "retrieve",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "input",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "retrieve",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "prompt",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "model",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 60,
+      "max_tokens": 50000
+    }
+  }
+}

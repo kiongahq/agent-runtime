@@ -1,0 +1,88 @@
+{
+  "id": "api-lookup",
+  "template_version": "1.0.0",
+  "name": "API lookup",
+  "description": "Call an approved API connection, then answer from its response.",
+  "graph": {
+    "schema_version": 2,
+    "name": "API lookup",
+    "description": "Call an approved API connection, then answer from its response.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Question",
+        "x": 40,
+        "y": 160
+      },
+      {
+        "id": "api",
+        "kind": "api",
+        "name": "Look up",
+        "x": 280,
+        "y": 160,
+        "config": {
+          "request": "{\"query\": \"{input}\"}"
+        }
+      },
+      {
+        "id": "prompt",
+        "kind": "prompt",
+        "name": "Answer prompt",
+        "x": 520,
+        "y": 160,
+        "config": {
+          "template": "Answer the question using the API response.\n\nQuestion: {input}\nAPI response: {api}"
+        }
+      },
+      {
+        "id": "model",
+        "kind": "model",
+        "name": "Answer",
+        "x": 760,
+        "y": 160,
+        "config": {
+          "model": "llm"
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Answer",
+        "x": 1000,
+        "y": 160
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "api",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "api",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "prompt",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "model",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 60,
+      "max_tokens": 50000
+    }
+  }
+}

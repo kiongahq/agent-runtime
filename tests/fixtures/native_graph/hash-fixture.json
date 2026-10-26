@@ -1,0 +1,56 @@
+{
+  "description": "Both the gateway (Go) and agent-runtime (Python) must compute expected_sha256 for this graph. It exercises key ordering, empty config values, non-ASCII text, HTML characters, U+2028, tabs and newlines.",
+  "graph": {
+    "schema_version": 2,
+    "name": "Hash fixture — ignored by the hash",
+    "nodes": [
+      {
+        "id": "prompt",
+        "kind": "prompt",
+        "name": "Prompt <b>",
+        "x": 300,
+        "y": 10,
+        "config": {
+          "template": "Répondez à {input} & <tag>\n\tfin ligne",
+          "unused": ""
+        }
+      },
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Input",
+        "x": 10,
+        "y": 10,
+        "config": {}
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Output",
+        "x": 600,
+        "y": 10
+      }
+    ],
+    "edges": [
+      {
+        "from": "prompt",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "input",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 60,
+      "max_tokens": 50000
+    }
+  },
+  "canonical": "{\"edges\":[{\"from\":\"input\",\"from_port\":\"out\",\"to\":\"prompt\",\"to_port\":\"in\"},{\"from\":\"prompt\",\"from_port\":\"out\",\"to\":\"output\",\"to_port\":\"in\"}],\"nodes\":[{\"config\":{},\"id\":\"input\",\"kind\":\"input\"},{\"config\":{},\"id\":\"output\",\"kind\":\"output\"},{\"config\":{\"template\":\"Répondez à {input} & <tag>\\n\\tfin\\u2028ligne\"},\"id\":\"prompt\",\"kind\":\"prompt\"}],\"schema_version\":2,\"settings\":{\"max_steps\":50,\"max_tokens\":50000,\"timeout_seconds\":60}}",
+  "expected_sha256": "0862056869227473ce139a616f1f75d76bf0ba0d509cb3b98b145b6a84a895fb"
+}

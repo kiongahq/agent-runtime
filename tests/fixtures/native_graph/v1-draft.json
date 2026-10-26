@@ -1,0 +1,19 @@
+{
+  "name": "Support triage (saved before schema version 2)",
+  "description": "A draft exactly as the version 1 designer stored it: no schema_version, no ports, free-text condition and memory settings.",
+  "nodes": [
+    {"id": "input", "kind": "input", "name": "Input", "x": 40, "y": 100, "config": {}},
+    {"id": "memory-1", "kind": "memory", "name": "Memory", "x": 240, "y": 100, "config": {"strategy": "keep the last few turns"}},
+    {"id": "condition-1", "kind": "condition", "name": "Is it urgent?", "x": 440, "y": 100, "config": {"expression": "route urgent tickets to a human"}},
+    {"id": "prompt-1", "kind": "prompt", "name": "Prompt", "x": 640, "y": 100, "config": {"template": "Reply to: {input}"}},
+    {"id": "model-1", "kind": "model", "name": "Model", "x": 840, "y": 100, "config": {"model": ""}},
+    {"id": "output", "kind": "output", "name": "Output", "x": 1040, "y": 100, "config": {}}
+  ],
+  "edges": [
+    {"from": "input", "to": "memory-1"},
+    {"from": "memory-1", "to": "condition-1"},
+    {"from": "condition-1", "to": "prompt-1"},
+    {"from": "prompt-1", "to": "model-1"},
+    {"from": "model-1", "to": "output"}
+  ]
+}

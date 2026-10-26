@@ -63,7 +63,45 @@ The editor workspace can be stopped after publication.
 Flows that use other provider bundles require a runtime image extended with
 those bundles before publishing.
 
-## Documentation
+### Native Agent Designer graphs
+
+Graphs built in the console's native Agent Designer are data, not code. This
+image interprets them with fixed node handlers (`agent_runtime/native_graph/`)
+that follow the [agent graph contract](https://github.com/kiongahq/contracts/tree/main/agent-graph):
+typed ports, a deterministic condition grammar, per-node timeouts and retries,
+and run budgets (`max_steps`, `timeout_seconds`, `max_tokens`). A node with
+inbound edges runs when at least one of them carried a value; a node with no
+inbound edges (the input, or a source such as a dataset loader) always runs.
+Every resource call (models, tools, API connections, knowledge bases, datasets)
+goes through the Kionga gateway, which checks project access on each call and
+adds credentials server-side; no secret ever enters a graph or this process.
+
+**Playground runner.** The gateway runs drafts on a separate service:
+
+```bash
+KIONGA_DESIGNER_RUNNER_TOKEN=$(openssl rand -hex 24) MLAIOPS_LLM_BACKEND=mock \
+python -m agent_runtime.designer              # listens on :9100
+```
+
+`POST /runs` (bearer `KIONGA_DESIGNER_RUNNER_TOKEN`) takes
+`{run_id, graph, input, session_id, history, allow_side_effects, stop_after, gateway: {url, run_token}}`
+and streams run events as newline-delimited JSON. Resource calls go back to
+`gateway.url` with `X-Kionga-Run-ID` and `X-Kionga-Run-Token`, so cancelling a run
+revokes its access. Tool and API nodes fail with `side_effects_not_approved` unless
+`allow_side_effects` is true. `stop_after` tests a single node: the runner executes
+only that node and its ancestors. A client disconnect cancels the run, and more than
+`KIONGA_DESIGNER_MAX_RUNS` (default 8) concurrent runs return 429. The service
+refuses to start without a runner token of at least 16 characters.
+
+**Published versions.** The operator mounts an immutable version artifact at
+`/app/flows/flow.json` (override with `KIONGA_NATIVE_GRAPH_PATH`) and sets
+`MLAIOPS_GRAPH_MODULE=agents.native_graph:build_native`. The runtime recomputes the
+artifact's canonical behavior hash and refuses to start when it does not match, then
+serves `/invoke` and `/stream` like any other agent. Resource nodes call the
+adjacent loopback `kionga-api` helper (`127.0.0.1:8890`), which holds the agent's
+project-scoped identity. Session turns are kept in memory (1,000 sessions, 50 turns
+each) for memory nodes.
+
 
 - Product documentation: [Build agents](https://kiongahq.github.io/docs/guides/agents/),
   [Agent frameworks](https://kiongahq.github.io/docs/guides/agent-frameworks/),

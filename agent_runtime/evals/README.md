@@ -10,6 +10,15 @@ never run in the commit gate; run them before ship and nightly.
   faithfulness against the expected facts (0.0–1.0).
 - **Threshold:** mean >= 0.7 and every case >= 0.4. Below threshold fails the run.
 
+## native-graph
+
+- **Golden set:** `native_graph_golden.jsonl` — template, input and expected
+  fields (structured extraction) or expected branch and keywords (customer support).
+- **Method:** run the starter template through the native interpreter with the real
+  LLM, then score deterministically: matching JSON fields, or correct route plus
+  keyword coverage (0.0–1.0).
+- **Threshold:** mean >= 0.7 and every case >= 0.4.
+
 ```bash
 MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
   python -m pytest python/agent_runtime/evals -q

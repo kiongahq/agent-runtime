@@ -1,0 +1,85 @@
+{
+  "id": "dataset-grounded",
+  "template_version": "1.0.0",
+  "name": "Dataset-grounded answer",
+  "description": "Answer from a text object stored in a RustFS project dataset.",
+  "graph": {
+    "schema_version": 2,
+    "name": "Dataset-grounded answer",
+    "description": "Answer from a text object stored in a RustFS project dataset.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Question",
+        "x": 40,
+        "y": 160
+      },
+      {
+        "id": "load",
+        "kind": "storage",
+        "name": "Load object",
+        "x": 280,
+        "y": 60
+      },
+      {
+        "id": "prompt",
+        "kind": "prompt",
+        "name": "Grounded prompt",
+        "x": 520,
+        "y": 160,
+        "config": {
+          "template": "Use this document to answer.\n\nDocument:\n{load}\n\nQuestion: {input}"
+        }
+      },
+      {
+        "id": "model",
+        "kind": "model",
+        "name": "Answer",
+        "x": 760,
+        "y": 160,
+        "config": {
+          "model": "llm"
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Answer",
+        "x": 1000,
+        "y": 160
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "load",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "prompt",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "model",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 60,
+      "max_tokens": 50000
+    }
+  }
+}

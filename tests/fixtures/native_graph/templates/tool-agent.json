@@ -1,0 +1,85 @@
+{
+  "id": "tool-agent",
+  "template_version": "1.0.0",
+  "name": "Tool-using agent",
+  "description": "Call a registered Kionga tool and summarize its result.",
+  "graph": {
+    "schema_version": 2,
+    "name": "Tool-using agent",
+    "description": "Call a registered Kionga tool and summarize its result.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Request",
+        "x": 40,
+        "y": 160
+      },
+      {
+        "id": "tool",
+        "kind": "tool",
+        "name": "Run tool",
+        "x": 280,
+        "y": 160
+      },
+      {
+        "id": "prompt",
+        "kind": "prompt",
+        "name": "Summarize",
+        "x": 520,
+        "y": 160,
+        "config": {
+          "template": "Summarize this tool result for the user's request.\n\nRequest: {input}\nResult: {tool}"
+        }
+      },
+      {
+        "id": "model",
+        "kind": "model",
+        "name": "Summary",
+        "x": 760,
+        "y": 160,
+        "config": {
+          "model": "llm"
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "Reply",
+        "x": 1000,
+        "y": 160
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "tool",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "tool",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "prompt",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "model",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 60,
+      "max_tokens": 50000
+    }
+  }
+}

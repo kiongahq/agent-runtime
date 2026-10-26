@@ -1,0 +1,6 @@
+{"id": "extract-complete", "template": "structured-extraction", "input": "Hi, this is Maria Lopez. Order 88412 arrived broken, please send a replacement.", "expected": {"name": "Maria Lopez", "order_number": "88412", "action": "replacement"}}
+{"id": "extract-missing-order", "template": "structured-extraction", "input": "James Okafor here. I would like to cancel my subscription.", "expected": {"name": "James Okafor", "order_number": "None", "action": "cancel"}}
+{"id": "extract-refund", "template": "structured-extraction", "input": "Please refund order 1203. Thanks, Priya Natarajan", "expected": {"name": "Priya Natarajan", "order_number": "1203", "action": "refund"}}
+{"id": "support-refund", "template": "customer-support", "input": "I want a refund for my last purchase.", "expected_route": "true", "expected_keywords": ["5 business days", "order"]}
+{"id": "support-refund-with-order", "template": "customer-support", "input": "Can I get a refund on order 5521? It never shipped.", "expected_route": "true", "expected_keywords": ["5 business days"]}
+{"id": "support-general", "template": "customer-support", "input": "How do I change the email on my account?", "expected_route": "false", "expected_keywords": ["email"]}

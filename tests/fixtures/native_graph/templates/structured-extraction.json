@@ -1,0 +1,73 @@
+{
+  "id": "structured-extraction",
+  "template_version": "1.0.0",
+  "name": "Structured extraction",
+  "description": "Extract fields from free text as JSON.",
+  "graph": {
+    "schema_version": 2,
+    "name": "Structured extraction",
+    "description": "Extract fields from free text as JSON.",
+    "nodes": [
+      {
+        "id": "input",
+        "kind": "input",
+        "name": "Document text",
+        "x": 40,
+        "y": 160
+      },
+      {
+        "id": "prompt",
+        "kind": "prompt",
+        "name": "Extraction prompt",
+        "x": 280,
+        "y": 160,
+        "config": {
+          "template": "Extract the customer name, order number and requested action from the text below. Reply with only a JSON object with keys name, order_number and action; use null for missing values.\n\nText:\n{input}"
+        }
+      },
+      {
+        "id": "model",
+        "kind": "model",
+        "name": "Extract",
+        "x": 520,
+        "y": 160,
+        "config": {
+          "model": "llm",
+          "system": "You output strict JSON and nothing else."
+        }
+      },
+      {
+        "id": "output",
+        "kind": "output",
+        "name": "JSON",
+        "x": 760,
+        "y": 160
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "prompt",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "prompt",
+        "to": "model",
+        "from_port": "out",
+        "to_port": "in"
+      },
+      {
+        "from": "model",
+        "to": "output",
+        "from_port": "out",
+        "to_port": "in"
+      }
+    ],
+    "settings": {
+      "max_steps": 50,
+      "timeout_seconds": 60,
+      "max_tokens": 50000
+    }
+  }
+}

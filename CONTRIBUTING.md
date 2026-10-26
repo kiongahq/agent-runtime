@@ -56,7 +56,7 @@ CI. Run them before you ship a change to an agent or a prompt:
 
 ```bash
 MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
-  python -m pytest -q agent_runtime/evals/eval_customer_support.py
+  python -m pytest -q agent_runtime/evals/eval_customer_support.py agent_runtime/evals/eval_native_graph.py
 ```
 
 The customer support eval scores each case in `agent_runtime/evals/golden.jsonl`

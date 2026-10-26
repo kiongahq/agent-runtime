@@ -11,6 +11,7 @@ The entrypoint decides what runs:
 | Entrypoint | Runs as | What it does |
 | --- | --- | --- |
 | `python -m agent_runtime` (default) | `agent-runtime` service, or one pod per agent on Kubernetes | Serves an agent over HTTP on port `9000` |
+| `python -m agent_runtime.designer` | `agent-designer-runner` service | Runs native Agent Designer drafts for the console playground on port `9100` |
 | `python -m features.materialize` | `feature-materializer` one-shot job | Loads feature views into the online and offline stores |
 | `python -m realtime.service` | `realtime-processor` service | Scores Kafka events with online features |
 | `python -m features.retention` | a scheduled job you run | Applies feature TTLs to online keys in Redis and removes keys of deleted views |
@@ -45,6 +46,18 @@ The agent server.
   (`POST /api/v1/traces`).
 - `__main__.py`: starts uvicorn on `MLAIOPS_RUNTIME_HOST` and
   `MLAIOPS_RUNTIME_PORT` (default `9000`).
+- `native_graph/`: the interpreter for native Agent Designer graphs.
+  `components.v1.json` is a byte-identical copy of the contracts registry (a test
+  compares them); `migrate.normalize` upgrades schema version 1 drafts in memory;
+  `validate.validate_graph` rejects unknown kinds, bad ports, incompatible types and
+  cycles; `canonical.content_sha256` is the cross-language behavior hash;
+  `conditions.parse` is the `operator:argument` grammar; `engine.run_graph` runs a
+  graph in topological order and yields contract run events with redacted,
+  truncated previews; `resources.GatewayResources` makes every resource call
+  through the gateway with bounded responses and no redirects.
+- `designer.py`: the playground runner (`POST /runs`, newline-delimited JSON
+  events), authenticated by `KIONGA_DESIGNER_RUNNER_TOKEN`, with a run-scoped gateway
+  credential per request, disconnect cancellation and a concurrency cap.
 - `evals/`: the paid eval lane. `eval_customer_support.py` runs the example agent
   over `golden.jsonl` and scores answers with an LLM judge.
 
@@ -54,7 +67,8 @@ Agent code that the runtime loads. `customer_support/graph.py` is a LangGraph
 `StateGraph` (reason, tools, respond) whose tools come from the SDK tool registry;
 its feature lookup falls back to a local profile when no feature gateway is
 configured, so it runs without infrastructure. `framework_examples.py` holds opt-in
-Agno and NOOA factories.
+Agno and NOOA factories. `native_graph.py` (`build_native`) serves a
+published native Agent Designer version after verifying its content hash.
 
 ### `features/`
 
