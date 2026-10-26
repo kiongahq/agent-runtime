@@ -197,8 +197,40 @@ async def test_adapter_answers_turns_keeps_session_history_and_reports_usage(tmp
     await agent.ainvoke({"messages": [HumanMessage(content="thanks")]}, config=config)
     assert agent.sessions["s-1"][:2] == [{"role": "user", "text": "refund please"},
                                          {"role": "assistant", "text": "Refund queued."}]
+    class Streaming:
+        async def astream(self, messages):
+            from langchain_core.messages import AIMessageChunk
+            for word in ["Streamed ", "reply ", "here"]:
+                yield AIMessageChunk(content=word)
+            yield AIMessageChunk(content="", usage_metadata={"input_tokens": 4, "output_tokens": 3, "total_tokens": 7})
+
+    agent = NativeGraph(llm_factory=Streaming)
     chunks = [chunk async for chunk, _ in agent.astream({"messages": [HumanMessage(content="hi")]}, config=config)]
-    assert len(chunks) == 1
+    assert [chunk.content for chunk in chunks[:3]] == ["Streamed ", "reply ", "here"], "tokens arrive as the model yields them"
+    assert "".join(chunk.content for chunk in chunks) == "Streamed reply here"
+    assert chunks[-1].content == "" and chunks[-1].usage_metadata["total_tokens"] > 0
+
+
+@pytest.mark.asyncio
+async def test_adapter_streams_only_the_final_model_and_verifies_subflows(tmp_path):
+    version = "agv-" + "d" * 24
+    echo = normalize({"name": "echo", "nodes": [{"id": "input", "kind": "input", "name": "In"},
+                                               {"id": "p", "kind": "prompt", "name": "P", "config": {"template": "echo: {input}"}},
+                                               {"id": "output", "kind": "output", "name": "Out"}],
+                      "edges": [{"from": "input", "to": "p"}, {"from": "p", "to": "output"}]})
+    graph = normalize({"name": "g", "nodes": [{"id": "input", "kind": "input", "name": "In"},
+                                              {"id": "draft", "kind": "model", "name": "Draft"},
+                                              {"id": "s", "kind": "subflow", "name": "S", "config": {"subflow": version}},
+                                              {"id": "output", "kind": "output", "name": "Out"}],
+                       "edges": [{"from": "input", "to": "draft"}, {"from": "draft", "to": "s"}, {"from": "s", "to": "output"}]})
+    path, _ = artifact(tmp_path, graph=graph, subflows={version: {"content_sha256": content_sha256(echo), "graph": echo}})
+    agent = NativeGraph(path, llm_factory=lambda: MockChatModel(["internal draft text"]))
+    chunks = [chunk async for chunk, _ in agent.astream({"messages": [HumanMessage(content="hi")]}, config={})]
+    assert [chunk.content for chunk in chunks] == ["echo: internal draft text"], "intermediate model text never streams"
+    tampered = {**echo, "nodes": [*echo["nodes"][:1], {**echo["nodes"][1], "config": {"template": "pwned"}}, echo["nodes"][2]]}
+    path, _ = artifact(tmp_path, graph=graph, subflows={version: {"content_sha256": content_sha256(echo), "graph": tampered}})
+    with pytest.raises(GraphLoadError, match="subflow"):
+        NativeGraph(path)
 
 
 @pytest.mark.asyncio
