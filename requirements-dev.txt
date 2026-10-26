@@ -2,3 +2,4 @@
 # in the Dockerfile). For a sibling checkout instead:
 #   pip install -e "../sdk-python[runtime,dev]"
 mlaiops-sdk[runtime,dev] @ https://github.com/kiongahq/sdk-python/archive/refs/tags/v0.2.0.tar.gz
+jsonschema>=4.22  # contract schema checks in tests/test_native_graph.py
