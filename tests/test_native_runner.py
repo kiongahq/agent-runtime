@@ -225,3 +225,17 @@ def test_runtime_app_serves_native_agents_end_to_end(tmp_path, monkeypatch):
         assert response.status_code == 200
         assert response.json()["reply"].startswith("[mock] acknowledged")
         assert response.json()["usage_available"] is True
+
+
+def test_runner_reads_its_token_from_a_mounted_secret(monkeypatch, tmp_path):
+    secret = tmp_path / "token"
+    secret.write_text(TOKEN + "\n")
+    monkeypatch.delenv("KIONGA_DESIGNER_RUNNER_TOKEN", raising=False)
+    monkeypatch.setenv("KIONGA_DESIGNER_RUNNER_TOKEN_FILE", str(secret))
+    client = TestClient(create_app())
+    authorized = client.post("/runs", json={}, headers={"Authorization": f"Bearer {TOKEN}"})
+    assert authorized.status_code == 422, "trailing newline must be stripped (422 = authenticated, body invalid)"
+    assert client.post("/runs", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 401
+    monkeypatch.setenv("KIONGA_DESIGNER_RUNNER_TOKEN", TOKEN)
+    with pytest.raises(RuntimeError, match="only one"):
+        create_app()

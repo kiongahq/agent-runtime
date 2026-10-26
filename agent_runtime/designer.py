@@ -15,7 +15,8 @@ provider or resource secrets, and graphs are data interpreted by fixed handlers.
 
 Configuration (environment):
 
-- ``KIONGA_DESIGNER_RUNNER_TOKEN`` — required; the service refuses to start without it.
+- ``KIONGA_DESIGNER_RUNNER_TOKEN`` (or ``KIONGA_DESIGNER_RUNNER_TOKEN_FILE``, a
+  mounted secret) — required; the service refuses to start without it.
 - ``KIONGA_DESIGNER_PORT`` — listen port (default 9100).
 - ``KIONGA_DESIGNER_MAX_RUNS`` — concurrent runs before 429 (default 8).
 - ``MLAIOPS_LLM_BACKEND`` / ``MLAIOPS_LLM_MODEL`` / ``MLAIOPS_LLM_BASE_URL`` — the
@@ -60,6 +61,21 @@ class RunRequest(BaseModel):
     gateway: GatewayCredential
 
 
+def _runner_token() -> str:
+    """The token from the environment, or from a mounted secret file
+    (``KIONGA_DESIGNER_RUNNER_TOKEN_FILE``, as Kubernetes provides it)."""
+    value = os.environ.get("KIONGA_DESIGNER_RUNNER_TOKEN", "")
+    path = os.environ.get("KIONGA_DESIGNER_RUNNER_TOKEN_FILE", "")
+    if value and path:
+        raise RuntimeError("set only one of KIONGA_DESIGNER_RUNNER_TOKEN and KIONGA_DESIGNER_RUNNER_TOKEN_FILE")
+    if path:
+        with open(path, encoding="utf-8") as handle:
+            value = handle.read(4097).rstrip("\r\n")
+        if len(value) > 4096:
+            raise RuntimeError("KIONGA_DESIGNER_RUNNER_TOKEN_FILE exceeds 4 KiB")
+    return value
+
+
 def _default_llm_factory():
     from mlaiops_sdk.llm import build_chat_model
 
@@ -80,7 +96,7 @@ def create_app(
     llm_factory: Callable[[], Any] | None = None,
     resources_factory: Callable[[RunRequest], Resources] | None = None,
 ) -> FastAPI:
-    token = token if token is not None else os.environ.get("KIONGA_DESIGNER_RUNNER_TOKEN", "")
+    token = token if token is not None else _runner_token()
     if len(token) < 16:
         raise RuntimeError("KIONGA_DESIGNER_RUNNER_TOKEN must be set to at least 16 characters")
     max_runs = max_runs if max_runs is not None else int(os.environ.get("KIONGA_DESIGNER_MAX_RUNS", "8"))
