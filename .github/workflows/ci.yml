@@ -6,19 +6,22 @@ on:
     tags: ["v*"]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   python:
-    uses: kiongahq/.github/.github/workflows/python.yml@main
+    uses: kiongahq/.github/.github/workflows/python.yml@1d0892d30e49997b7a082766e23d15ffb6ed5c1b
     with:
       install: pip install -r requirements-dev.txt
   image:
     needs: python
-    uses: kiongahq/.github/.github/workflows/image.yml@main
+    uses: kiongahq/.github/.github/workflows/image.yml@1d0892d30e49997b7a082766e23d15ffb6ed5c1b
     permissions: {contents: read, packages: write}
     with: {image: agent-runtime}
   langflow-image:
     needs: python
-    uses: kiongahq/.github/.github/workflows/image.yml@main
+    uses: kiongahq/.github/.github/workflows/image.yml@1d0892d30e49997b7a082766e23d15ffb6ed5c1b
     permissions: {contents: read, packages: write}
     with:
       image: langflow-agent-runtime
@@ -29,8 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {contents: read, packages: read}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

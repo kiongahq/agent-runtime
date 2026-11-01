@@ -1,0 +1,11 @@
+name: Security gates
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  guardrails:
+    uses: kiongahq/.github/.github/workflows/guardrails.yml@1d0892d30e49997b7a082766e23d15ffb6ed5c1b

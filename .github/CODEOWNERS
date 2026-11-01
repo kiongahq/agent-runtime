@@ -1,0 +1,8 @@
+# All changes require maintainer review. Last matching rule owns the path.
+* @Markkimotho
+
+# Explicitly protect the controls that govern CI and review.
+/.github/ @Markkimotho
+/SECURITY.md @Markkimotho
+/.gitleaksignore @Markkimotho
+/.gitleaks.toml @Markkimotho
