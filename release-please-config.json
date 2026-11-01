@@ -1,0 +1,63 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "kionga-agent-runtime",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "version-file": "version.txt",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features",
+          "hidden": false
+        },
+        {
+          "type": "fix",
+          "section": "Fixes",
+          "hidden": false
+        },
+        {
+          "type": "perf",
+          "section": "Performance",
+          "hidden": false
+        },
+        {
+          "type": "revert",
+          "section": "Reverts",
+          "hidden": false
+        },
+        {
+          "type": "docs",
+          "section": "Documentation",
+          "hidden": false
+        },
+        {
+          "type": "refactor",
+          "section": "Improvements",
+          "hidden": false
+        },
+        {
+          "type": "build",
+          "section": "Build and dependencies",
+          "hidden": false
+        },
+        {
+          "type": "ci",
+          "section": "Automation",
+          "hidden": false
+        },
+        {
+          "type": "chore",
+          "section": "Maintenance",
+          "hidden": false
+        }
+      ]
+    }
+  },
+  "bootstrap-sha": "8dc0e902d60009a4f030fc282d5306e0498b20cc"
+}

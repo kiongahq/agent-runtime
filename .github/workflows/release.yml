@@ -1,0 +1,38 @@
+name: Release
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: kiongahq/.github/release/validate@717e2cc3be707aff75c717662c6b3fea58ab56d8
+  release:
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: release-policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require release automation credentials
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "::error::Configure RELEASE_PLEASE_TOKEN with scoped contents, issues, and pull-request write permissions before enabling releases."
+            exit 1
+          fi
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          target-branch: ${{ github.event.repository.default_branch }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
