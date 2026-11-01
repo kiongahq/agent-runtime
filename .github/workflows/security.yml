@@ -8,4 +8,4 @@ permissions:
   contents: read
 jobs:
   guardrails:
-    uses: kiongahq/.github/.github/workflows/guardrails.yml@1d0892d30e49997b7a082766e23d15ffb6ed5c1b
+    uses: kiongahq/.github/.github/workflows/guardrails.yml@2517a38a78046eaa6f51afc2dc12a33fc4beb4d7
