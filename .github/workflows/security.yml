@@ -1,0 +1,14 @@
+name: Security gates
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  guardrails:
+    uses: kiongahq/.github/.github/workflows/guardrails.yml@76e4fed230c4f0b89b1bcf884df60e5b2fffca67
