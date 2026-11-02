@@ -124,7 +124,10 @@ By contributing, you agree that your contributions are licensed under the
 
 Configure `RELEASE_PLEASE_TOKEN` with Contents, Issues and Pull requests write
 permissions scoped to the participating repositories. Release PRs require
-independent review and all required checks; no bypass is granted to automation.
+maintainer review and all required checks; no bypass is granted to automation.
+The sole maintainer can merge after reviewing the diff and passing checks,
+without a separate approval. Restore independent code-owner approval when
+another trusted maintainer joins.
 The workflow reports an error until this credential is configured.
 
 Use reviewed `vX.Y.Z` releases, keep published tags and packages immutable, and
