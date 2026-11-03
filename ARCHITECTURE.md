@@ -96,7 +96,11 @@ published native Agent Designer version after verifying its content hash.
 - `service.py`: consumes `mlaiops.transactions`, `mlaiops.callcenter.transcripts`
   and `mlaiops.user.activity`, writes results to `mlaiops.fraud.alerts`,
   `mlaiops.callcenter.insights` and `mlaiops.recs.results`, and reports measured
-  throughput and latency to the gateway.
+  throughput and latency to the gateway. Delivery is at least once: the consumer
+  runs with auto-commit off and commits a poll's offsets only after every result
+  of that poll is produced. A failed batch is fetched again, so each result
+  carries `source_offset` (`topic`, `partition`, `offset` of its input record)
+  for downstream deduplication.
 - `produce.py`: sends demo events, for example
   `python -m realtime.produce --demo fraud --count 5`.
 

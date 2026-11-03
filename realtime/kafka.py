@@ -32,7 +32,13 @@ class KafkaRest:
 
 
 class Consumer:
-    """One consumer-group instance subscribed to a set of topics."""
+    """One consumer-group instance subscribed to a set of topics.
+
+    Auto-commit is off: the proxy's default commits offsets as soon as
+    records are fetched, which drops a batch whose processing fails. Callers
+    commit with :meth:`commit` after the results are produced, so delivery is
+    at least once.
+    """
 
     def __init__(self, rest: KafkaRest, group: str, topics: list[str], name: str | None = None) -> None:
         self.rest = rest
@@ -41,7 +47,7 @@ class Consumer:
         create = self.rest.client.post(
             f"{self.rest.base_url}/consumers/{self.group}",
             content=json.dumps(
-                {"name": self.name, "format": "json", "auto.offset.reset": "earliest"}
+                {"name": self.name, "format": "json", "auto.offset.reset": "earliest", "auto.commit.enable": "false"}
             ),
             headers={"Content-Type": "application/vnd.kafka.v2+json"},
         )
@@ -64,6 +70,29 @@ class Consumer:
         )
         response.raise_for_status()
         return response.json()
+
+    def commit(self, records: list[dict[str, Any]]) -> None:
+        """Commit the highest consumed offset of each partition in ``records``.
+
+        The REST proxy commits ``offset + 1`` for each entry (the next record
+        to read), the Confluent v2 contract Karapace implements."""
+        latest: dict[tuple[str, int], int] = {}
+        for record in records:
+            if "partition" not in record or "offset" not in record:
+                continue
+            key = (str(record.get("topic", "")), int(record["partition"]))
+            latest[key] = max(latest.get(key, -1), int(record["offset"]))
+        if not latest:
+            return
+        response = self.rest.client.post(
+            f"{self.instance_url}/offsets",
+            content=json.dumps(
+                {"offsets": [{"topic": topic, "partition": partition, "offset": offset}
+                             for (topic, partition), offset in sorted(latest.items())]}
+            ),
+            headers={"Content-Type": "application/vnd.kafka.v2+json"},
+        )
+        response.raise_for_status()
 
     def close(self) -> None:
         try:
