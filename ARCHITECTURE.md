@@ -80,7 +80,8 @@ published native Agent Designer version after verifying its content hash.
   snapshot through a storage-proxy presigned URL (Parquet, or JSONL without
   pyarrow), and reports lineage to the gateway.
 - `point_in_time.py`: `point_in_time_join` builds training data that never uses a
-  feature row newer than the label's timestamp.
+  feature row whose event time or creation time is after the label's timestamp,
+  so late-arriving and backfilled rows cannot leak into earlier labels.
 - `retention.py`: `sweep` sets each view's TTL on online keys
   (`mlaiops:features:<view>:<entity>`) that have no expiry and deletes keys of
   views that are no longer defined; `--dry-run` reports without changing anything.

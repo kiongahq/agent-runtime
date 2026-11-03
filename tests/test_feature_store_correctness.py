@@ -44,13 +44,73 @@ def test_point_in_time_join_never_uses_future_values():
         assert "churned" not in json.dumps(row, default=str)
 
 
+def _brute_force(labels, features, name):
+    """The definition, written the slow obvious way: among rows whose event
+    time and creation time (when present) are both at or before the label,
+    take the latest by (event time, creation time, input order)."""
+    expected = []
+    for label in labels:
+        eligible = [
+            (f["event_timestamp"], f.get("created_timestamp") or datetime.min.replace(tzinfo=timezone.utc), index, f)
+            for index, f in enumerate(features)
+            if f["user_id"] == label["user_id"]
+            and f["event_timestamp"] <= label["event_timestamp"]
+            and (f.get("created_timestamp") is None or f["created_timestamp"] <= label["event_timestamp"])
+        ]
+        expected.append(max(eligible, key=lambda item: item[:3])[3][name] if eligible else None)
+    return expected
+
+
 def test_point_in_time_join_brute_force_equivalence():
-    """Every output equals the latest feature row at or before the label."""
+    """Every output equals the latest feature row available at the label."""
     joined = point_in_time_join(LABELS, FEATURES, entity_key="user_id", features=["plan"])
-    for label, row in zip(LABELS, joined):
-        eligible = [f for f in FEATURES if f["user_id"] == label["user_id"] and f["event_timestamp"] <= label["event_timestamp"]]
-        expected = max(eligible, key=lambda f: f["event_timestamp"])["plan"] if eligible else None
-        assert row["plan"] == expected
+    assert [row["plan"] for row in joined] == _brute_force(LABELS, FEATURES, "plan")
+
+
+def test_point_in_time_join_brute_force_equivalence_with_created_timestamps():
+    """Randomized rows with late arrivals and backfills: the join matches the
+    brute-force definition on every label."""
+    import random
+
+    rng = random.Random(31)
+    features = []
+    for index in range(300):
+        event = at(rng.randint(0, 120))
+        # Most rows land shortly after their event; some arrive hours late,
+        # and some have no creation time at all.
+        roll = rng.random()
+        created = None if roll < 0.15 else event + timedelta(minutes=rng.randint(0, 5) if roll < 0.7 else rng.randint(30, 300))
+        row = {"user_id": f"u{rng.randint(1, 5)}", "event_timestamp": event, "value": index}
+        if created is not None:
+            row["created_timestamp"] = created
+        features.append(row)
+    labels = [{"user_id": f"u{rng.randint(1, 6)}", "event_timestamp": at(rng.randint(0, 400))} for _ in range(400)]
+    joined = point_in_time_join(labels, features, entity_key="user_id", features=["value"])
+    assert [row["value"] for row in joined] == _brute_force(labels, features, "value")
+
+
+def test_point_in_time_join_skips_rows_created_after_the_label():
+    """A backfilled row (event T-1h, written T+1h) did not exist at T: the
+    earlier eligible row is used instead."""
+    features = [
+        {"user_id": "u1", "event_timestamp": at(-120), "created_timestamp": at(-119), "plan": "free"},
+        {"user_id": "u1", "event_timestamp": at(-60), "created_timestamp": at(60), "plan": "backfilled-pro"},
+    ]
+    labels = [{"user_id": "u1", "event_timestamp": at(0)}, {"user_id": "u1", "event_timestamp": at(61)}]
+    joined = point_in_time_join(labels, features, entity_key="user_id", features=["plan"])
+    assert [row["plan"] for row in joined] == ["free", "backfilled-pro"]
+    legacy = point_in_time_join(labels, features, entity_key="user_id", features=["plan"], respect_created_timestamp=False)
+    assert [row["plan"] for row in legacy] == ["backfilled-pro", "backfilled-pro"]
+
+
+def test_point_in_time_join_ttl_applies_to_the_fallback_row():
+    features = [
+        {"user_id": "u1", "event_timestamp": at(-120), "created_timestamp": at(-120), "plan": "stale"},
+        {"user_id": "u1", "event_timestamp": at(-1), "created_timestamp": at(5), "plan": "late"},
+    ]
+    joined = point_in_time_join([{"user_id": "u1", "event_timestamp": at(0)}], features, entity_key="user_id",
+                                features=["plan"], ttl_seconds=600)
+    assert joined[0]["plan"] is None
 
 
 def test_point_in_time_join_respects_ttl():
@@ -64,7 +124,7 @@ def test_point_in_time_join_breaks_ties_by_created_timestamp_and_accepts_strings
         {"user_id": "u1", "event_timestamp": "2026-10-01T12:00:00Z", "created_timestamp": "2026-10-01T12:05:00Z", "plan": "corrected"},
         {"user_id": "u1", "event_timestamp": "2026-10-01T12:00:00Z", "created_timestamp": "2026-10-01T12:01:00Z", "plan": "original"},
     ]
-    labels = [{"user_id": "u1", "event_timestamp": "2026-10-01T13:00:00+01:00"}]  # same instant as 12:00Z
+    labels = [{"user_id": "u1", "event_timestamp": "2026-10-01T14:00:00+01:00"}]  # same instant as 13:00Z, after both writes
     joined = point_in_time_join(labels, features, entity_key="user_id", features=["plan"], prefix="f_")
     assert joined[0]["f_plan"] == "corrected"
 
