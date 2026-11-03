@@ -4,7 +4,9 @@ Endpoints:
 
 - ``GET  /healthz``  — liveness.
 - ``POST /invoke``   — one agent turn; returns the reply and available usage.
-- ``POST /stream``   — the same turn as Server-Sent Events token stream.
+- ``POST /stream``   — the same turn as Server-Sent Events token stream. Only
+  model (AI message) text is streamed; tool results never reach the client,
+  only a redacted ``{"tool": name, "status": ...}`` progress event.
 
 Configuration (environment):
 
@@ -163,6 +165,16 @@ def _agent_identity(request: Request | None = None) -> tuple[str, str]:
     )
 
 
+def _message_text(content: Any) -> str:
+    """Text of a message's content: a string, or the text blocks of a list."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(block.get("text", "") if isinstance(block, dict) else str(block)
+                       for block in content if isinstance(block, (str, dict)))
+    return ""
+
+
 def thread_key(agent_id: str, user_id: str, session_id: str) -> str:
     """The checkpoint thread for one conversation, namespaced by agent and
     user so knowing another user's session id never loads their history.
@@ -295,7 +307,7 @@ def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
 
     @app.post("/stream", dependencies=[Depends(require_gateway)])
     async def stream(payload: InvokeRequest, who: Caller = Depends(caller)) -> StreamingResponse:
-        from langchain_core.messages import HumanMessage
+        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
         session_id = payload.session_id or str(uuid.uuid4())
         agent_id, agent_name, user_id = who.agent_id, who.agent_name, who.user_id
@@ -310,9 +322,18 @@ def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
                     config=_run_config(session_id, who),
                     stream_mode="messages",
                 ):
-                    text = getattr(chunk, "content", "")
+                    # LangGraph's messages mode also emits messages returned
+                    # by nodes, such as ToolNode results holding raw tool
+                    # output. Only model text goes to the client, matching
+                    # /invoke, which returns the final AI message alone.
+                    if isinstance(chunk, ToolMessage):
+                        yield f"data: {json.dumps({'tool': chunk.name or 'tool', 'status': chunk.status or 'success'})}\n\n"
+                        continue
+                    if not isinstance(chunk, AIMessage):
+                        continue
+                    collected.append(chunk)  # usage counts every model chunk
+                    text = _message_text(chunk.content)
                     if text:
-                        collected.append(chunk)
                         yield f"data: {json.dumps({'delta': text})}\n\n"
             except Exception as error:
                 status = "failed"

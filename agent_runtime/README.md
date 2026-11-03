@@ -12,7 +12,7 @@ locally.
 | --- | --- |
 | `GET /healthz` | Liveness, framework and auth mode (no identity; unauthenticated) |
 | `POST /invoke` | One agent turn: `{message, session_id?, user_id?}` → reply + usage counters and `usage_available` |
-| `POST /stream` | Same turn as Server-Sent Events (`{"delta": ...}` chunks, final `{"done": true, ...}` summary) |
+| `POST /stream` | Same turn as Server-Sent Events (`{"delta": ...}` chunks of model text, redacted `{"tool": name, "status": ...}` progress events, final `{"done": true, ...}` summary). Tool results are never streamed |
 
 Every turn reports a session summary to the gateway (`POST /api/v1/traces`),
 which upserts the live session (turns, tokens, cost) shown in the console.

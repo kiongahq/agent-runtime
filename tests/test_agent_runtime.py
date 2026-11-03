@@ -434,3 +434,45 @@ def test_runtime_binds_feature_lookup_to_the_gateway_user(monkeypatch):
     state = graph.get_state({"configurable": {"thread_id": thread_key("agt-1", "u123", "s1")}})
     tool_output = [m for m in state.values["messages"] if isinstance(m, ToolMessage)][0].content
     assert '"entity_id": "u123"' in tool_output and "u456" not in tool_output
+
+
+# -- streaming ----------------------------------------------------------------
+
+
+def _tool_loop_app(monkeypatch):
+    monkeypatch.setattr("agent_runtime.reporting.record_trace", lambda payload: None)
+    graph = _demo_graph(responses=[
+        {"tool_call": {"name": "feature_store_lookup", "args": {}}},
+        "You are on the pro plan.",
+    ])
+    return create_app(graph=graph, auth=AuthConfig(required=False))
+
+
+def _sse_events(body):
+    import json
+
+    return [json.loads(line[6:]) for line in body.splitlines() if line.startswith("data: ")]
+
+
+def test_stream_never_sends_tool_output(monkeypatch):
+    with TestClient(_tool_loop_app(monkeypatch)) as client:
+        with client.stream("POST", "/stream", json={"message": "What plan am I on?", "user_id": "u123"}) as response:
+            body = "".join(response.iter_text())
+    assert response.status_code == 200
+    assert '"plan": "pro"' not in body and "eu-west" not in body and "csat" not in body
+    events = _sse_events(body)
+    assert {"tool": "feature_store_lookup", "status": "success"} in events
+    assert "".join(event.get("delta", "") for event in events) == "You are on the pro plan."
+
+
+def test_stream_deltas_and_usage_match_invoke(monkeypatch):
+    request = {"message": "What plan am I on?", "user_id": "u123"}
+    with TestClient(_tool_loop_app(monkeypatch)) as client:
+        invoked = client.post("/invoke", json=request).json()
+    with TestClient(_tool_loop_app(monkeypatch)) as client:
+        with client.stream("POST", "/stream", json=request) as response:
+            events = _sse_events("".join(response.iter_text()))
+    assert "".join(event.get("delta", "") for event in events) == invoked["reply"]
+    done = events[-1]
+    assert done["done"] is True
+    assert (done["input_tokens"], done["output_tokens"]) == (invoked["input_tokens"], invoked["output_tokens"])
