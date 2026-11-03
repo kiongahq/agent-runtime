@@ -41,6 +41,22 @@ thread state, while `AgentMemoryClient` stores tenant/agent/user-scoped semantic
 memories in pgvector. Keep project/user identifiers in runtime context when serving
 multiple teams.
 
+## Code execution
+
+The runtime does not execute model-generated code. Frameworks that do, such as
+NOOA, run that code inside the runtime process, which serves HTTP and holds
+provider keys and `MLAIOPS_INTERNAL_TOKEN`. Generated code there could read those
+secrets from `os.environ`, call internal services and exhaust the pod.
+
+Threat model for enabling it later: generated code is untrusted input. It needs
+an out-of-process executor (a gVisor or Firecracker runtime class, or a separate
+executor service) with no secrets in its environment, a read-only root
+filesystem, no network by default, and CPU, memory and wall-clock limits, and the
+runtime must verify that executor is configured and healthy before it starts.
+Until that exists, `agents.framework_examples:build_nooa` refuses to start
+(`require_code_sandbox`). `KIONGA_ALLOW_CODE_EXECUTION` is no longer honored: an
+environment flag is not a sandbox.
+
 ## Run locally
 
 ```bash
