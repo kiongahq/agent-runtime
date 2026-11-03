@@ -70,8 +70,11 @@ The agent server.
 Agent code that the runtime loads. `customer_support/graph.py` is a LangGraph
 `StateGraph` (reason, tools, respond) whose tools come from the SDK tool registry;
 its feature lookup falls back to a local profile when no feature gateway is
-configured, so it runs without infrastructure. `framework_examples.py` holds opt-in
-Agno and NOOA factories. `native_graph.py` (`build_native`) serves a
+configured, so it runs without infrastructure. The lookup takes no model-set
+arguments: it reads the caller from `configurable["user_id"]`, which the runtime
+sets from the authenticated user, so the model cannot fetch another customer's
+profile. Tools that read per-user data follow that pattern. `framework_examples.py`
+holds opt-in Agno and NOOA factories (NOOA refuses to start without a code sandbox). `native_graph.py` (`build_native`) serves a
 published native Agent Designer version after verifying its content hash.
 
 ### `features/`

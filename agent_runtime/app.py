@@ -174,7 +174,9 @@ def thread_key(agent_id: str, user_id: str, session_id: str) -> str:
 def _run_config(session_id: str, caller: Caller) -> dict[str, Any]:
     user_id = caller.user_id
     config: dict[str, Any] = {
-        "configurable": {"thread_id": thread_key(caller.agent_id, user_id, session_id)},
+        # Tools that touch per-user data read the caller from
+        # ``configurable["user_id"]``, never from model-chosen arguments.
+        "configurable": {"thread_id": thread_key(caller.agent_id, user_id, session_id), "user_id": user_id},
         "metadata": {"langfuse_session_id": session_id, "langfuse_user_id": user_id},
     }
     handler = langfuse_handler()
