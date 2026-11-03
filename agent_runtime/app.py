@@ -15,18 +15,33 @@ Configuration (environment):
   checkpointer; falls back to in-memory checkpoints when absent.
 - ``MLAIOPS_LLM_BACKEND`` / ``MLAIOPS_LLM_MODEL`` / ``MLAIOPS_LLM_BASE_URL`` —
   chat model selection (see ``mlaiops_sdk.llm``).
+- ``MLAIOPS_RUNTIME_AUTH`` — ``required`` or ``disabled``. Defaults to
+  ``required`` when ``KIONGA_ENVIRONMENT=production`` and ``disabled``
+  otherwise; ``disabled`` is refused in production.
+- ``MLAIOPS_INTERNAL_TOKEN`` — the shared gateway credential. With auth
+  required, ``/invoke`` and ``/stream`` need ``Authorization: Bearer <token>``
+  and the startup fails unless it is at least 16 characters.
+
+Caller identity: with auth required, the agent id and name come from the
+``X-MLAIOps-Agent-ID`` / ``X-MLAIOps-Agent-Name`` headers and the user from
+``X-MLAIOps-User-ID``, and they are trusted only because the request carries
+the gateway credential. With auth disabled (local development) the same
+headers and the body ``user_id`` are taken as given.
 """
 
 from __future__ import annotations
 
+import hmac
 import json
+import logging
 import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -53,17 +68,88 @@ class InvokeResponse(BaseModel):
     duration_ms: int
 
 
+logger = logging.getLogger(__name__)
+
+MIN_TOKEN_LENGTH = 16
+
+
+@dataclass(frozen=True)
+class AuthConfig:
+    """Whether ``/invoke`` and ``/stream`` require the gateway credential."""
+
+    required: bool
+    token: str = ""
+
+    @classmethod
+    def from_env(cls) -> "AuthConfig":
+        production = os.environ.get("KIONGA_ENVIRONMENT", "").strip().lower() == "production"
+        mode = os.environ.get("MLAIOPS_RUNTIME_AUTH", "").strip().lower() or ("required" if production else "disabled")
+        if mode not in {"required", "disabled"}:
+            raise RuntimeError("MLAIOPS_RUNTIME_AUTH must be 'required' or 'disabled'")
+        if mode == "disabled":
+            if production:
+                raise RuntimeError("MLAIOPS_RUNTIME_AUTH=disabled is not allowed when KIONGA_ENVIRONMENT=production")
+            logger.warning("agent runtime authentication is disabled; any caller can invoke the agent (local development only)")
+            return cls(required=False)
+        token = os.environ.get("MLAIOPS_INTERNAL_TOKEN", "")
+        if len(token) < MIN_TOKEN_LENGTH:
+            raise RuntimeError(
+                f"MLAIOPS_RUNTIME_AUTH=required needs MLAIOPS_INTERNAL_TOKEN of at least {MIN_TOKEN_LENGTH} characters"
+            )
+        return cls(required=True, token=token)
+
+
+@dataclass(frozen=True)
+class Caller:
+    """Who a turn runs for: the control-plane agent and the end user."""
+
+    agent_id: str
+    agent_name: str
+    user_id: str
+    authenticated: bool
+
+
+def _check_graph_module(request: Request) -> None:
+    expected = request.headers.get("X-MLAIOps-Graph-Module", "")
+    loaded = os.environ.get("MLAIOPS_GRAPH_MODULE", "")
+    if expected and loaded and expected != loaded:
+        raise HTTPException(status_code=409, detail="This runtime serves a different entrypoint; deploy a dedicated runtime for this agent")
+
+
+def _authenticate(request: Request, auth: AuthConfig) -> bool:
+    """Verify the gateway credential in constant time. Returns whether the
+    request is authenticated; raises 401 when auth is required and it is not."""
+    if not auth.required:
+        return False
+    supplied = request.headers.get("Authorization", "")
+    if not hmac.compare_digest(supplied.encode(), f"Bearer {auth.token}".encode()):
+        raise HTTPException(status_code=401, detail="gateway credential required",
+                            headers={"WWW-Authenticate": "Bearer"})
+    return True
+
+
+def _resolve_caller(request: Request, authenticated: bool, body_user_id: str) -> Caller:
+    _check_graph_module(request)
+    agent_id, agent_name = _agent_identity(request)
+    user_id = body_user_id
+    if authenticated:
+        # The gateway asserts the end user; a body value may only repeat it.
+        user_id = request.headers.get("X-MLAIOps-User-ID", "").strip()
+        if not user_id:
+            raise HTTPException(status_code=401, detail="X-MLAIOps-User-ID is required on gateway requests")
+        if body_user_id and body_user_id != user_id:
+            raise HTTPException(status_code=403, detail="user_id does not match the authenticated user")
+    return Caller(agent_id=agent_id, agent_name=agent_name, user_id=user_id, authenticated=authenticated)
+
+
 def _agent_identity(request: Request | None = None) -> tuple[str, str]:
     """Per-request identity wins: the gateway proxy sends the control-plane
     agent id/name as headers, so one shared runtime can serve any deployed
     agent and still report sessions against the right one. Environment
-    variables (set by the operator per-pod) are the fallback."""
+    variables (set by the operator per-pod) are the fallback. Call only after
+    the request is authenticated, or with auth disabled."""
     header_id = header_name = ""
     if request is not None:
-        expected = request.headers.get("X-MLAIOps-Graph-Module", "")
-        loaded = os.environ.get("MLAIOPS_GRAPH_MODULE", "")
-        if expected and loaded and expected != loaded:
-            raise HTTPException(status_code=409, detail="This runtime serves a different entrypoint; deploy a dedicated runtime for this agent")
         header_id = request.headers.get("X-MLAIOps-Agent-ID", "")
         header_name = request.headers.get("X-MLAIOps-Agent-Name", "")
     return (
@@ -83,9 +169,12 @@ def _run_config(session_id: str, user_id: str) -> dict[str, Any]:
     return config
 
 
-def create_app(graph: Any = None) -> FastAPI:
+def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
     """Build the runtime app. Pass ``graph`` directly in tests; production
-    resolves ``MLAIOPS_GRAPH_MODULE`` during startup."""
+    resolves ``MLAIOPS_GRAPH_MODULE`` during startup. ``auth`` defaults to
+    :meth:`AuthConfig.from_env`, which raises on an unsafe configuration so
+    the process fails before it listens."""
+    auth = auth if auth is not None else AuthConfig.from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -120,21 +209,31 @@ def create_app(graph: Any = None) -> FastAPI:
 
     app = FastAPI(title="mlaiops-agent-runtime", lifespan=lifespan)
 
+    def require_gateway(http_request: Request) -> None:
+        # A route dependency without a body, so it runs before body
+        # validation: an unauthenticated caller gets 401, never a 422 that
+        # describes the request schema.
+        http_request.state.authenticated = _authenticate(http_request, auth)
+
+    def caller(payload: InvokeRequest, http_request: Request) -> Caller:
+        return _resolve_caller(http_request, http_request.state.authenticated, payload.user_id)
+
     @app.get("/healthz")
     async def healthz(http_request: Request) -> dict[str, str]:
-        agent_id, agent_name = _agent_identity(http_request)
-        return {"status": "ok", "agent_id": agent_id, "agent_name": agent_name,
+        # Unauthenticated liveness: no identity in the response.
+        _check_graph_module(http_request)
+        return {"status": "ok", "auth": "required" if auth.required else "disabled",
                 "framework": getattr(app.state.graph, "framework", "langgraph"),
                 "streaming_mode": getattr(app.state.graph, "streaming_mode", "incremental")}
 
-    @app.post("/invoke", response_model=InvokeResponse)
+    @app.post("/invoke", response_model=InvokeResponse, dependencies=[Depends(require_gateway)])
     async def invoke(
-        payload: InvokeRequest, http_request: Request, background: BackgroundTasks
+        payload: InvokeRequest, background: BackgroundTasks, who: Caller = Depends(caller)
     ) -> InvokeResponse:
         from langchain_core.messages import HumanMessage
 
         session_id = payload.session_id or str(uuid.uuid4())
-        agent_id, agent_name = _agent_identity(http_request)
+        agent_id, agent_name, user_id = who.agent_id, who.agent_name, who.user_id
         started = time.perf_counter()
         status, reply, usage = "succeeded", "", Usage()
         usage_available = False
@@ -142,7 +241,7 @@ def create_app(graph: Any = None) -> FastAPI:
         try:
             result = await app.state.graph.ainvoke(
                 {"messages": [HumanMessage(content=payload.message)]},
-                config=_run_config(session_id, payload.user_id),
+                config=_run_config(session_id, user_id),
             )
             messages = result.get("messages", []) if isinstance(result, dict) else []
             reply = str(messages[-1].content) if messages else ""
@@ -158,7 +257,7 @@ def create_app(graph: Any = None) -> FastAPI:
                 report_session,
                 agent_id=agent_id,
                 session_id=session_id,
-                user_id=payload.user_id,
+                user_id=user_id,
                 name=agent_name,
                 status=status,
                 current_node="respond",
@@ -178,12 +277,12 @@ def create_app(graph: Any = None) -> FastAPI:
             duration_ms=duration_ms,
         )
 
-    @app.post("/stream")
-    async def stream(payload: InvokeRequest, http_request: Request) -> StreamingResponse:
+    @app.post("/stream", dependencies=[Depends(require_gateway)])
+    async def stream(payload: InvokeRequest, who: Caller = Depends(caller)) -> StreamingResponse:
         from langchain_core.messages import HumanMessage
 
         session_id = payload.session_id or str(uuid.uuid4())
-        agent_id, agent_name = _agent_identity(http_request)
+        agent_id, agent_name, user_id = who.agent_id, who.agent_name, who.user_id
 
         async def event_stream():
             yield f"data: {json.dumps({'streaming_mode': getattr(app.state.graph, 'streaming_mode', 'incremental')})}\n\n"
@@ -192,7 +291,7 @@ def create_app(graph: Any = None) -> FastAPI:
             try:
                 async for chunk, _ in app.state.graph.astream(
                     {"messages": [HumanMessage(content=payload.message)]},
-                    config=_run_config(session_id, payload.user_id),
+                    config=_run_config(session_id, user_id),
                     stream_mode="messages",
                 ):
                     text = getattr(chunk, "content", "")
@@ -223,7 +322,7 @@ def create_app(graph: Any = None) -> FastAPI:
             report_session(
                 agent_id=agent_id,
                 session_id=session_id,
-                user_id=payload.user_id,
+                user_id=user_id,
                 name=agent_name,
                 status=status,
                 current_node="respond",

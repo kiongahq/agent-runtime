@@ -45,7 +45,10 @@ curl -X POST http://localhost:9000/invoke \
 
 The response holds the reply, the session ID, token counts, cost and duration.
 `POST /stream` returns the same turn as Server-Sent Events, and `GET /healthz`
-reports the agent's identity. The workers start with
+reports liveness. Locally the runtime accepts any caller; in production
+(`KIONGA_ENVIRONMENT=production`, or `MLAIOPS_RUNTIME_AUTH=required`) `/invoke` and
+`/stream` accept only the gateway, authenticated with `MLAIOPS_INTERNAL_TOKEN`
+(see [`agent_runtime/README.md`](agent_runtime/README.md#authentication)). The workers start with
 `python -m features.materialize` and `python -m realtime.service`.
 
 ### Published Langflow flows

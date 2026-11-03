@@ -31,9 +31,13 @@ The agent server.
   checkpointer (PostgreSQL when `MLAIOPS_CHECKPOINT_DSN` or `DATABASE_URL` is set,
   in-memory otherwise) and loads the graph. Routes: `GET /healthz`,
   `POST /invoke` (one turn, returns reply, usage, cost and duration) and
-  `POST /stream` (the same turn as Server-Sent Events). Agent identity comes from
-  the gateway's request headers first and `MLAIOPS_AGENT_ID` and
-  `MLAIOPS_AGENT_NAME` second, so one shared runtime can serve several agents.
+  `POST /stream` (the same turn as Server-Sent Events). With auth required
+  (production default) both turn routes need `Authorization: Bearer
+  $MLAIOPS_INTERNAL_TOKEN`, compared in constant time, and the startup fails
+  without a token. Agent identity comes from the gateway's request headers first
+  and `MLAIOPS_AGENT_ID` and `MLAIOPS_AGENT_NAME` second, so one shared runtime
+  can serve several agents; the user comes from `X-MLAIOps-User-ID`. Those
+  headers are trusted only on an authenticated request.
 - `graphs.py`: `resolve_attribute` and `build_graph` load a `module:attribute`
   spec that names a compiled graph, an uncompiled `StateGraph` or a
   `build(model, checkpointer)` factory. An attribute marked with
@@ -123,7 +127,8 @@ Gate tests for each package, with the `mock` LLM and fake HTTP and Redis clients
 ## How it connects to other components
 
 - **platform**: the gateway proxies agent invocations to the runtime with the
-  agent's identity headers and receives session reports. The runtime authenticates
+  internal token, the agent's identity headers and the authenticated user, and
+  receives session reports. The runtime authenticates
   with `MLAIOPS_TOKEN`, which deployments set to the platform's internal service
   token. On Kubernetes, the operator runs one runtime per agent with a trace-proxy
   sidecar.
