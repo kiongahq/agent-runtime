@@ -27,7 +27,7 @@ expects these headers on every turn:
 | Header | Meaning |
 | --- | --- |
 | `Authorization: Bearer $MLAIOPS_INTERNAL_TOKEN` | Gateway credential, compared in constant time; otherwise 401 |
-| `X-MLAIOps-User-ID` | The authenticated end user; required (401 without it). A body `user_id` that differs gets 403 |
+| `X-MLAIOps-User-ID` | The authenticated end user; required (401 without it). A body `user_id` is ignored |
 | `X-MLAIOps-Agent-ID` / `X-MLAIOps-Agent-Name` | Control-plane agent identity for session reporting |
 | `X-MLAIOps-Graph-Module` | Entry point the gateway expects; 409 on mismatch |
 
@@ -56,6 +56,18 @@ taken as given, which is safe only on a developer machine.
 LLM calls should egress through the platform trace-proxy: set
 `MLAIOPS_LLM_BASE_URL` (or `OPENAI_BASE_URL`) to the proxy address so every
 request/response pair is captured.
+
+## Sessions
+
+`session_id` is a caller label, not a storage key. The checkpoint thread is
+`thread_key(agent_id, user_id, session_id)` =
+`<agent_id>:<user_id>:<session_id>`, with the agent and user ids percent-encoded,
+so one user can never resume another user's thread, and one agent never reads
+another agent's, even with a known or guessed session id. With auth required the
+user is the gateway's `X-MLAIOps-User-ID`; a body `user_id` is ignored. Supplied
+session ids must match `^[A-Za-z0-9][A-Za-z0-9._:@-]{0,199}$` (422 otherwise);
+when none is given the runtime generates a UUIDv4. The gateway session reports
+and the response keep the plain `session_id`.
 
 Session checkpoints and long-term memory are separate: checkpoints preserve graph
 thread state, while `AgentMemoryClient` stores tenant/agent/user-scoped semantic

@@ -38,6 +38,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 from dataclasses import dataclass
 from typing import Any
 
@@ -52,10 +53,15 @@ from .graphs import GraphLoadError, build_graph, resolve_attribute
 from .reporting import Usage, report_session, usage_from_messages
 
 
+# Caller-chosen session ids are opaque labels, never storage keys on their
+# own: see thread_key.
+SESSION_ID_PATTERN = r"^(|[A-Za-z0-9][A-Za-z0-9._:@-]{0,199})$"
+
+
 class InvokeRequest(BaseModel):
     message: str = Field(min_length=1)
-    session_id: str = ""
-    user_id: str = ""
+    session_id: str = Field(default="", pattern=SESSION_ID_PATTERN)
+    user_id: str = Field(default="", max_length=256)
 
 
 class InvokeResponse(BaseModel):
@@ -133,12 +139,11 @@ def _resolve_caller(request: Request, authenticated: bool, body_user_id: str) ->
     agent_id, agent_name = _agent_identity(request)
     user_id = body_user_id
     if authenticated:
-        # The gateway asserts the end user; a body value may only repeat it.
+        # The gateway asserts the end user. A body user_id is caller-chosen
+        # and is ignored, so it can never select another user's thread.
         user_id = request.headers.get("X-MLAIOps-User-ID", "").strip()
         if not user_id:
             raise HTTPException(status_code=401, detail="X-MLAIOps-User-ID is required on gateway requests")
-        if body_user_id and body_user_id != user_id:
-            raise HTTPException(status_code=403, detail="user_id does not match the authenticated user")
     return Caller(agent_id=agent_id, agent_name=agent_name, user_id=user_id, authenticated=authenticated)
 
 
@@ -158,9 +163,18 @@ def _agent_identity(request: Request | None = None) -> tuple[str, str]:
     )
 
 
-def _run_config(session_id: str, user_id: str) -> dict[str, Any]:
+def thread_key(agent_id: str, user_id: str, session_id: str) -> str:
+    """The checkpoint thread for one conversation, namespaced by agent and
+    user so knowing another user's session id never loads their history.
+    Agent and user ids are percent-encoded, so ``:`` separates the parts
+    unambiguously."""
+    return f"{quote(agent_id, safe='')}:{quote(user_id, safe='')}:{session_id}"
+
+
+def _run_config(session_id: str, caller: Caller) -> dict[str, Any]:
+    user_id = caller.user_id
     config: dict[str, Any] = {
-        "configurable": {"thread_id": session_id},
+        "configurable": {"thread_id": thread_key(caller.agent_id, user_id, session_id)},
         "metadata": {"langfuse_session_id": session_id, "langfuse_user_id": user_id},
     }
     handler = langfuse_handler()
@@ -241,7 +255,7 @@ def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
         try:
             result = await app.state.graph.ainvoke(
                 {"messages": [HumanMessage(content=payload.message)]},
-                config=_run_config(session_id, user_id),
+                config=_run_config(session_id, who),
             )
             messages = result.get("messages", []) if isinstance(result, dict) else []
             reply = str(messages[-1].content) if messages else ""
@@ -291,7 +305,7 @@ def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
             try:
                 async for chunk, _ in app.state.graph.astream(
                     {"messages": [HumanMessage(content=payload.message)]},
-                    config=_run_config(session_id, user_id),
+                    config=_run_config(session_id, who),
                     stream_mode="messages",
                 ):
                     text = getattr(chunk, "content", "")

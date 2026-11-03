@@ -8,7 +8,7 @@ import secrets
 import pytest
 from fastapi.testclient import TestClient
 
-from agent_runtime.app import AuthConfig, create_app
+from agent_runtime.app import AuthConfig, create_app, thread_key
 from agent_runtime.graphs import GraphLoadError, build_graph
 from agent_runtime.reporting import Usage, usage_from_messages
 from mlaiops_sdk.llm import MockChatModel
@@ -259,9 +259,8 @@ def test_gateway_requests_must_name_the_user(secured, path):
 @pytest.mark.parametrize("path", ["/invoke", "/stream"])
 def test_body_user_id_cannot_override_the_authenticated_user(secured, path):
     status, _ = _call(secured, path, GATEWAY, body={"message": "hi", "user_id": "mallory"})
-    assert status == 403
-    status, _ = _call(secured, path, GATEWAY, body={"message": "hi", "user_id": "alice"})
     assert status == 200
+    assert secured.recorded[-1]["user_id"] == "alice"
 
 
 def test_healthz_stays_open_with_auth_required(secured):
@@ -299,3 +298,74 @@ def test_unsafe_auth_configuration_fails_startup(monkeypatch, env, message):
         monkeypatch.setenv(name, value)
     with pytest.raises(RuntimeError, match=message):
         create_app(graph=_demo_graph())
+
+
+# -- session isolation --------------------------------------------------------
+
+
+def _checkpointed_app(auth=None):
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from agents.customer_support.graph import build
+
+    graph = build(model=MockChatModel(responses=["noted"] * 20), checkpointer=MemorySaver())
+    return graph, create_app(graph=graph, auth=auth or AuthConfig(required=False))
+
+
+def _history(graph, agent_id, user_id, session_id):
+    state = graph.get_state({"configurable": {"thread_id": thread_key(agent_id, user_id, session_id)}})
+    return [message.content for message in state.values.get("messages", [])]
+
+
+@pytest.mark.parametrize("path", ["/invoke", "/stream"])
+def test_session_id_does_not_cross_users(path, monkeypatch):
+    """alice's session s1, then bob's turn with the same session id: bob's
+    thread holds none of alice's messages and alice's is untouched."""
+    monkeypatch.setattr("agent_runtime.reporting.record_trace", lambda payload: None)
+    monkeypatch.setenv("MLAIOPS_AGENT_ID", "agt-1")
+    graph, app = _checkpointed_app()
+    with TestClient(app) as client:
+        assert _call(client, path, body={"message": "alice secret 4242", "session_id": "s1", "user_id": "alice"})[0] == 200
+        assert _call(client, path, body={"message": "bob asks", "session_id": "s1", "user_id": "bob"})[0] == 200
+        assert _call(client, path, body={"message": "alice again", "session_id": "s1", "user_id": "alice"})[0] == 200
+    bob = _history(graph, "agt-1", "bob", "s1")
+    assert "bob asks" in bob and not any("4242" in text for text in bob)
+    alice = _history(graph, "agt-1", "alice", "s1")
+    assert "alice secret 4242" in alice and "alice again" in alice and "bob asks" not in alice
+    # The raw session id is not a thread on its own.
+    assert graph.get_state({"configurable": {"thread_id": "s1"}}).values == {}
+
+
+@pytest.mark.parametrize("path", ["/invoke", "/stream"])
+def test_authenticated_sessions_bind_to_the_gateway_user(path, monkeypatch):
+    """With auth required a body user_id cannot pick a victim's thread."""
+    monkeypatch.setattr("agent_runtime.reporting.record_trace", lambda payload: None)
+    graph, app = _checkpointed_app(AuthConfig(required=True, token=GATEWAY_TOKEN))
+    agent = {"X-MLAIOps-Agent-ID": "agt-1"}
+    with TestClient(app) as client:
+        _call(client, path, {**GATEWAY, **agent}, body={"message": "alice secret 4242", "session_id": "s1"})
+        bob = {**GATEWAY, **agent, "X-MLAIOps-User-ID": "bob"}
+        _call(client, path, bob, body={"message": "bob asks", "session_id": "s1", "user_id": "alice"})
+    assert not any("4242" in text for text in _history(graph, "agt-1", "bob", "s1"))
+    assert "bob asks" not in _history(graph, "agt-1", "alice", "s1")
+
+
+def test_sessions_are_isolated_per_agent(monkeypatch):
+    monkeypatch.setattr("agent_runtime.reporting.record_trace", lambda payload: None)
+    graph, app = _checkpointed_app()
+    with TestClient(app) as client:
+        client.post("/invoke", json={"message": "for agent one", "session_id": "s1", "user_id": "alice"},
+                    headers={"X-MLAIOps-Agent-ID": "agt-1"})
+        client.post("/invoke", json={"message": "for agent two", "session_id": "s1", "user_id": "alice"},
+                    headers={"X-MLAIOps-Agent-ID": "agt-2"})
+    assert "for agent one" not in _history(graph, "agt-2", "alice", "s1")
+
+
+def test_thread_key_is_unambiguous():
+    assert thread_key("a:b", "c", "s") != thread_key("a", "b:c", "s")
+    assert thread_key("agt-1", "alice", "s1") == "agt-1:alice:s1"
+
+
+@pytest.mark.parametrize("session_id", ["../etc", "a b", "x" * 201, "-leading", "s1\n"])
+def test_malformed_session_ids_are_rejected(client, session_id):
+    assert client.post("/invoke", json={"message": "hi", "session_id": session_id}).status_code == 422
