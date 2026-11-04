@@ -1,0 +1,10 @@
+{
+  "target": "runner-embedding-request",
+  "why": "There is nothing to embed.",
+  "path": "$.text",
+  "message": "non-empty",
+  "document": {
+    "text": "",
+    "dimensions": 384
+  }
+}

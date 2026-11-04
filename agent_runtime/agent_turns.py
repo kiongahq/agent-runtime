@@ -22,6 +22,8 @@ shape:
 Message content never reaches a log line or an error message. Exceptions are reduced
 to their class name, HTTP status and a short provider code, because a provider's error
 text and any traceback can quote the prompt. Credentials must not be sent here at all.
+LangSmith is the exception this module cannot stop: LANGSMITH_TRACING or LANGCHAIN_TRACING_V2
+makes LangChain send every prompt and reply to an external service, so leave them unset.
 """
 
 from __future__ import annotations
@@ -47,6 +49,7 @@ ERROR_CODES = ("rate_limited", "provider_unavailable", "invalid_request", "model
 PLATFORM_MODEL = "llm"
 MAX_BODY_BYTES = 64 * 1024 * 1024
 MAX_CONTENT = 1024 * 1024
+MAX_EMBEDDING_BODY_BYTES = 1024 * 1024
 MAX_RETRY_AFTER_SECONDS = 86400
 CAPACITY_RETRY_SECONDS = 5
 DISCONNECT_POLL_SECONDS = 0.5
@@ -85,7 +88,7 @@ class TurnError(Exception):
 class _Closed(BaseModel):
     """The contract is closed: an unlisted field is an error, so none can carry a credential."""
 
-    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+    model_config = ConfigDict(extra="forbid", strict=True, protected_namespaces=())
 
 
 class ToolCall(_Closed):
@@ -360,26 +363,39 @@ async def run_turn(llm: Any, payload: AgentTurnRequest, timeout: float | None = 
     }
 
 
-def parse_request(body: bytes) -> AgentTurnRequest:
+class EmbeddingRequest(_Closed):
+    text: str = Field(min_length=1, max_length=32000)
+    dimensions: int = Field(ge=1, le=4096)
+
+
+def embed(payload: EmbeddingRequest) -> list[float]:
+    """The embedder designer knowledge nodes use, so a query matches what is indexed."""
+    from mlaiops_sdk.agents import HashingEmbedder
+
+    return HashingEmbedder(payload.dimensions).embed(payload.text)
+
+
+def parse_request(body: bytes, model: type[_Closed] = AgentTurnRequest) -> Any:
     """Validate a request. Errors name fields, never their values."""
     try:
         data = json.loads(body)
     except (ValueError, RecursionError):
         raise TurnError("invalid_request", "request body is not valid JSON") from None
     try:
-        return AgentTurnRequest.model_validate(data)
+        return model.model_validate(data)
     except ValidationError as error:
         issues = [f"{'.'.join(str(part) for part in issue['loc']) or 'request'}: {issue['msg']}"
                   for issue in error.errors(include_input=False, include_url=False, include_context=False)]
         raise TurnError("invalid_request", "; ".join(issues[:5])) from None
 
 
-async def read_body(request: Request) -> bytes:
+async def read_body(request: Request, limit: int | None = None) -> bytes:
+    limit = MAX_BODY_BYTES if limit is None else limit
     chunks, size = [], 0
     async for chunk in request.stream():
         size += len(chunk)
-        if size > MAX_BODY_BYTES:
-            raise TurnError("invalid_request", f"request body exceeds {MAX_BODY_BYTES} bytes")
+        if size > limit:
+            raise TurnError("invalid_request", f"request body exceeds {limit} bytes")
         chunks.append(chunk)
     return b"".join(chunks)
 

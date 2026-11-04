@@ -6,6 +6,7 @@
 - ``POST /runs``    — run one draft turn; the response is newline-delimited JSON
   run events (contracts ``agent-graph/run-event.v1.schema.json``).
 - ``POST /agent-turns`` — one model call for an Agent Teams worker (``agent_turns.py``).
+- ``POST /embeddings`` — a query vector from the embedder knowledge nodes use.
 
 Only the gateway calls this service. It authenticates with
 ``Authorization: Bearer $KIONGA_DESIGNER_RUNNER_TOKEN`` and passes a run-scoped
@@ -41,7 +42,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from .agent_turns import AgentTurns
+from .agent_turns import MAX_EMBEDDING_BODY_BYTES, AgentTurns, EmbeddingRequest, TurnError, embed, parse_request, read_body
 from .native_graph import normalize, run_graph, validate_graph
 from .native_graph.judge import RUBRIC_VERSION, JudgeError, build_judge_model, judge, judge_backend
 from .native_graph.resources import GatewayResources, Resources
@@ -165,6 +166,16 @@ def create_app(
     async def agent_turn(http_request: Request) -> Response:
         result = await turns.handle(http_request)
         return Response(json.dumps(result), media_type="application/json", headers={"Cache-Control": "no-store"})
+
+    # The handler parses this body too, because FastAPI's 422 detail would echo the text.
+    @app.post("/embeddings", dependencies=[Depends(authorize)])
+    async def embeddings(http_request: Request) -> Response:
+        try:
+            payload = parse_request(await read_body(http_request, MAX_EMBEDDING_BODY_BYTES), EmbeddingRequest)
+        except TurnError as error:
+            return Response(json.dumps(error.body()), status_code=422, media_type="application/json")
+        return Response(json.dumps({"vector": embed(payload)}), media_type="application/json",
+                        headers={"Cache-Control": "no-store"})
 
     # Authorization is a dependency so an unauthenticated caller learns nothing
     # from body validation errors.

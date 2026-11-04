@@ -69,7 +69,8 @@ The agent server.
   so a provider error that quotes the prompt goes no further. Tool calls return to the
   gateway as data; nothing a model returns runs here. `agent_turn_mock.py` is the real
   LangChain model behind `MLAIOPS_LLM_BACKEND=mock`: its decisions are a function of the
-  transcript, and it is the only reader of `[[mock-script]]`.
+  transcript, and it is the only reader of `[[mock-script]]`. `embed` serves
+  `POST /embeddings` with the embedder knowledge nodes use.
 - `evals/`: the paid eval lane. `eval_customer_support.py` runs the example agent
   over `golden.jsonl` and scores answers with an LLM judge. `eval_agent_turns.py` plays the
   gateway's framing over `POST /agent-turns` and scores delegation, report format and

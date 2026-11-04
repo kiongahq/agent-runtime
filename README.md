@@ -117,12 +117,25 @@ Message content never reaches a log or an error message. `KIONGA_DESIGNER_MAX_AG
 bounds one call, so the gateway's client timeout must be longer. Provider SDK retries are
 off, because the gateway persists retries. Only the platform model, `llm`, can take turns.
 
+Do not set `LANGSMITH_TRACING` or `LANGCHAIN_TRACING_V2` on this service. LangChain would
+then send every prompt, tool result and reply to an external service, past trace-proxy and
+past the rule that keeps message content out of logs.
+
+Through trace-proxy, a call also ends at the proxy's write timeout. A slower call fails as
+`provider_unavailable` after the provider has already been paid, so keep that timeout above
+`KIONGA_AGENT_TURN_TIMEOUT_SECONDS`.
+
 Under `MLAIOPS_LLM_BACKEND=mock` a deterministic policy replaces the provider, so a whole
 team runs with no key: a coordinator spawns each member, waits, then finishes, and a worker
 runs one safe `exec`, then finishes. A test can script a worker by putting a JSON list of
 steps between two `[[mock-script]]` markers in its task; any other backend treats that as
 plain text. See [`agent_runtime/agent_turn_mock.py`](agent_runtime/agent_turn_mock.py) for
 the format.
+
+`POST /embeddings` (same bearer token) turns `{text, dimensions}` into `{vector}` with the
+SDK hashing embedder that knowledge nodes use, so a query matches what is indexed with that
+embedder. `text` is 1-32000 characters and `dimensions` is 1-4096, the limits for knowledge
+bases. A malformed body is HTTP 422 with an `invalid_request` error that holds no text.
 
 **Published versions.** The operator mounts an immutable version artifact at
 `/app/flows/flow.json` (override with `KIONGA_NATIVE_GRAPH_PATH`) and sets

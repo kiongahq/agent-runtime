@@ -494,6 +494,8 @@ CALL = {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "name": 
     ({"run_id": "agr-" + "a" * 24}, "run_id"),
     ({"worker_id": "nope"}, "worker_id"),
     ({"turn": 0}, "turn"),
+    ({"turn": "3"}, "turn"),
+    ({"turn": True}, "turn"),
     ({"model": "mdl-1"}, "platform model"),
     ({"messages": []}, "messages"),
     ({"max_output_tokens": 0}, "max_output_tokens"),

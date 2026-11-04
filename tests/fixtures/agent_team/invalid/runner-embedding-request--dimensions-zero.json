@@ -1,0 +1,10 @@
+{
+  "target": "runner-embedding-request",
+  "why": "A vector has at least one dimension.",
+  "path": "$.dimensions",
+  "message": "minimum",
+  "document": {
+    "text": "query",
+    "dimensions": 0
+  }
+}
