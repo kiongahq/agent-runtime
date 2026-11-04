@@ -5,6 +5,7 @@
 - ``GET  /healthz`` — liveness and capacity.
 - ``POST /runs``    — run one draft turn; the response is newline-delimited JSON
   run events (contracts ``agent-graph/run-event.v1.schema.json``).
+- ``POST /agent-turns`` — one model call for an Agent Teams worker (``agent_turns.py``).
 
 Only the gateway calls this service. It authenticates with
 ``Authorization: Bearer $KIONGA_DESIGNER_RUNNER_TOKEN`` and passes a run-scoped
@@ -19,6 +20,9 @@ Configuration (environment):
   mounted secret) — required; the service refuses to start without it.
 - ``KIONGA_DESIGNER_PORT`` — listen port (default 9100).
 - ``KIONGA_DESIGNER_MAX_RUNS`` — concurrent runs before 429 (default 8).
+- ``KIONGA_DESIGNER_MAX_AGENT_TURNS`` — concurrent agent turns before ``rate_limited``
+  (default 32).
+- ``KIONGA_AGENT_TURN_TIMEOUT_SECONDS`` — one agent turn's model call (default 600).
 - ``MLAIOPS_LLM_BACKEND`` / ``MLAIOPS_LLM_MODEL`` / ``MLAIOPS_LLM_BASE_URL`` — the
   platform chat model used by ``model`` nodes set to ``llm``.
 """
@@ -33,10 +37,11 @@ import re
 from typing import Any, Callable, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
+from .agent_turns import AgentTurns
 from .native_graph import normalize, run_graph, validate_graph
 from .native_graph.judge import RUBRIC_VERSION, JudgeError, build_judge_model, judge, judge_backend
 from .native_graph.resources import GatewayResources, Resources
@@ -112,6 +117,7 @@ def create_app(
     llm_factory: Callable[[], Any] | None = None,
     resources_factory: Callable[[RunRequest], Resources] | None = None,
     judge_factory: Callable[[], Any] | None = None,
+    agent_turns: AgentTurns | None = None,
 ) -> FastAPI:
     token = token if token is not None else _runner_token()
     if len(token) < 16:
@@ -122,6 +128,7 @@ def create_app(
     resources_factory = resources_factory or _default_resources
     app = FastAPI(title="kionga-agent-designer-runner")
     app.state.active = 0
+    turns = agent_turns or AgentTurns()
 
     def authorize(request: Request) -> None:
         supplied = request.headers.get("Authorization", "")
@@ -130,7 +137,8 @@ def create_app(
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
-        return {"status": "ok", "active_runs": app.state.active, "max_runs": max_runs}
+        return {"status": "ok", "active_runs": app.state.active, "max_runs": max_runs,
+                "active_agent_turns": turns.active, "max_agent_turns": turns.max_active}
 
     @app.post("/judge", dependencies=[Depends(authorize)])
     async def judge_case(payload: JudgeRequest) -> dict[str, Any]:
@@ -150,6 +158,13 @@ def create_app(
             raise HTTPException(status_code=502, detail={"error": "judge_failed", "message": f"judge model call failed: {type(error).__name__}"}) from None
         backend, model_name = judge_backend()
         return {**result, "judge": {"backend": backend, "model": model_name or "default", "rubric_version": RUBRIC_VERSION}}
+
+    # The body is parsed by the handler, not FastAPI: a malformed request is a contract
+    # error (200, invalid_request), and a 422 detail would echo the input.
+    @app.post("/agent-turns", dependencies=[Depends(authorize)])
+    async def agent_turn(http_request: Request) -> Response:
+        result = await turns.handle(http_request)
+        return Response(json.dumps(result), media_type="application/json", headers={"Cache-Control": "no-store"})
 
     # Authorization is a dependency so an unauthenticated caller learns nothing
     # from body validation errors.
