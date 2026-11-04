@@ -62,8 +62,18 @@ The agent server.
 - `designer.py`: the playground runner (`POST /runs`, newline-delimited JSON
   events), authenticated by `KIONGA_DESIGNER_RUNNER_TOKEN`, with a run-scoped gateway
   credential per request, disconnect cancellation and a concurrency cap.
+- `agent_turns.py`: `POST /agent-turns` on the designer runner, one stateless model call
+  for an Agent Teams worker. `to_langchain_messages` and `to_bound_tools` convert the
+  contract request, `run_turn` makes the call, and `classify` reduces any failure to a
+  contract error using only the exception's class, HTTP status and short provider code,
+  so a provider error that quotes the prompt goes no further. Tool calls return to the
+  gateway as data; nothing a model returns runs here. `agent_turn_mock.py` is the real
+  LangChain model behind `MLAIOPS_LLM_BACKEND=mock`: its decisions are a function of the
+  transcript, and it is the only reader of `[[mock-script]]`.
 - `evals/`: the paid eval lane. `eval_customer_support.py` runs the example agent
-  over `golden.jsonl` and scores answers with an LLM judge.
+  over `golden.jsonl` and scores answers with an LLM judge. `eval_agent_turns.py` plays the
+  gateway's framing over `POST /agent-turns` and scores delegation, report format and
+  resistance to instructions inside `kionga-data` blocks.
 
 ### `agents/`
 

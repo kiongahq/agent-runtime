@@ -554,8 +554,9 @@ def test_a_successful_turn_logs_identifiers_and_counts_but_no_content(monkeypatc
 # --- mock backend -------------------------------------------------------------------------
 
 
+COORDINATOR_SYSTEM = "Base rules.\n\nTeam members you can spawn:\n- bug-fixer: Fixes bugs.\n- reviewer: Reviews.\n\nReport format."
 SPAWN = {"name": "spawn_worker", "description": "Start a member", "input_schema": {
-    "type": "object", "properties": {"agent": {"type": "string", "enum": ["bug-fixer", "reviewer"]}, "task": {"type": "string"}}}}
+    "type": "object", "properties": {"agent": {"type": "string"}, "task": {"type": "string"}}}}
 FINISH = {"name": "finish", "description": "Hand back", "input_schema": {
     "type": "object", "properties": {"report": {"type": "string"}}, "required": ["report"]}}
 EXEC = {"name": "exec", "description": "Run", "input_schema": {"type": "object", "properties": {"command": {"type": "string"}}}}
@@ -601,42 +602,42 @@ def test_mock_worker_without_finish_replies_with_text(mock_app):
 def test_mock_coordinator_spawns_each_member_once_waits_then_finishes(mock_app):
     tools = [SPAWN, FINISH]
     messages = [{"role": "user", "content": "fix the bug"}]
-    spawn = post(mock_app, turn(messages=messages, tools=tools))
+    spawn = post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=messages, tools=tools))
     assert [call["arguments"]["agent"] for call in spawn["tool_calls"]] == ["bug-fixer", "reviewer"]
     assert len({call["id"] for call in spawn["tool_calls"]}) == 2
     messages += [assistant(spawn)] + [
         {"role": "tool", "tool_call_id": call["id"], "content": '{"worker_id": "atw-1"}'} for call in spawn["tool_calls"]]
-    waiting = post(mock_app, turn(messages=messages, tools=tools))
+    waiting = post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=messages, tools=tools))
     assert waiting["tool_calls"] == [] and "bug-fixer" in waiting["content"] and "reviewer" in waiting["content"]
     messages += [assistant(waiting), hand_back("bug-fixer")]
-    still = post(mock_app, turn(messages=messages, tools=tools))
+    still = post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=messages, tools=tools))
     assert still["tool_calls"] == [] and "reviewer" in still["content"] and "bug-fixer" not in still["content"]
     messages += [assistant(still), hand_back("reviewer", "message")]
-    assert post(mock_app, turn(messages=messages, tools=tools))["tool_calls"] == [], "a message is not a hand-back"
+    assert post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=messages, tools=tools))["tool_calls"] == [], "a message is not a hand-back"
     done_messages = [*messages, assistant({"content": "Waiting.", "tool_calls": []}), hand_back("reviewer")]
-    done = post(mock_app, turn(messages=done_messages, tools=tools))
+    done = post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=done_messages, tools=tools))
     assert [call["name"] for call in done["tool_calls"]] == ["finish"]
     assert "bug-fixer" in done["tool_calls"][0]["arguments"]["report"]
     # A refused finish waits for the next delivery rather than looping.
     refused = [*done_messages, assistant(done),
                {"role": "tool", "tool_call_id": done["tool_calls"][0]["id"], "content": '{"error": "workers_live"}'}]
-    assert post(mock_app, turn(messages=refused, tools=tools))["tool_calls"] == []
+    assert post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=refused, tools=tools))["tool_calls"] == []
 
 
 def test_mock_coordinator_does_not_wait_on_a_failed_spawn(mock_app):
     tools = [SPAWN, FINISH]
     messages = [{"role": "user", "content": "go"}]
-    spawn = post(mock_app, turn(messages=messages, tools=tools))
+    spawn = post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=messages, tools=tools))
     messages += [assistant(spawn)] + [
         {"role": "tool", "tool_call_id": call["id"], "content": '{"error": "worker_limit"}'} for call in spawn["tool_calls"]]
-    done = post(mock_app, turn(messages=messages, tools=tools))
+    done = post(mock_app, turn(system=COORDINATOR_SYSTEM, messages=messages, tools=tools))
     assert [call["name"] for call in done["tool_calls"]] == ["finish"]
     assert "no members were spawned" in done["tool_calls"][0]["arguments"]["report"]
 
 
 def test_mock_is_deterministic_across_fresh_processes(monkeypatch):
     monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
-    for payload in (turn(tools=[EXEC, FINISH]), turn(messages=[{"role": "user", "content": "x"}], tools=[SPAWN, FINISH])):
+    for payload in (turn(tools=[EXEC, FINISH]), turn(system=COORDINATOR_SYSTEM, messages=[{"role": "user", "content": "x"}], tools=[SPAWN, FINISH])):
         replies = [post(client(), payload) for _ in range(3)]
         assert replies[0] == replies[1] == replies[2]
         assert "error" not in replies[0]
@@ -720,3 +721,8 @@ def test_a_script_has_no_effect_on_a_real_backend(monkeypatch, provider, backend
     assert result["content"] == "real reply" and result["tool_calls"] == []
     assert len(provider.requests) == 1, "the provider was called"
     assert MARKER in json.dumps(provider.requests[0]["json"]["messages"]), "the text reaches the model as plain text"
+
+
+def test_mock_coordinator_with_no_listed_members_says_so(mock_app):
+    result = post(mock_app, turn(system="Base rules.", messages=[{"role": "user", "content": "x"}], tools=[SPAWN, FINISH]))
+    assert "no members were spawned" in result["tool_calls"][0]["arguments"]["report"]

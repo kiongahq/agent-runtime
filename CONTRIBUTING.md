@@ -56,12 +56,15 @@ CI. Run them before you ship a change to an agent or a prompt:
 
 ```bash
 MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
-  python -m pytest -q agent_runtime/evals/eval_customer_support.py agent_runtime/evals/eval_native_graph.py
+  python -m pytest -q agent_runtime/evals/eval_customer_support.py agent_runtime/evals/eval_native_graph.py \
+  agent_runtime/evals/eval_agent_turns.py
 ```
 
 The customer support eval scores each case in `agent_runtime/evals/golden.jsonl`
 with an LLM judge. It passes when the mean score is at least 0.7 and no case scores
-below 0.4. Without `MLAIOPS_RUN_EVALS=1` the eval is skipped. Never run evals from
+below 0.4. The Agent Teams turn eval has its own threshold in
+`agent_runtime/evals/README.md`, and holds a copy of the gateway's prompt and framing that
+must follow any change to them. Without `MLAIOPS_RUN_EVALS=1` the eval is skipped. Never run evals from
 an untrusted pull request with provider keys exposed.
 
 ## Build the image

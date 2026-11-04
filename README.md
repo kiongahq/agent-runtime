@@ -99,6 +99,31 @@ only that node and its ancestors. A client disconnect cancels the run, and more 
 `KIONGA_DESIGNER_MAX_RUNS` (default 8) concurrent runs return 429. The service
 refuses to start without a runner token of at least 16 characters.
 
+**Agent Teams turns.** The same service makes the model calls for Agent Teams.
+`POST /agent-turns` (same bearer token) takes one transcript and makes exactly one model
+call; the gateway owns the loop, the state and every tool call. The body follows the
+closed [runner turn contract](https://github.com/kiongahq/contracts/tree/main/agent-team).
+A failure is HTTP 200 with `{"error": {"code", "message", "retry_after_seconds"}}`:
+
+| Code | When |
+| --- | --- |
+| `rate_limited` | Provider 429 or the runner at capacity. `retry_after_seconds` is present when the provider sent `Retry-After`. |
+| `provider_unavailable` | Provider 5xx, 408, 409, connection failure, timeout or exhausted quota. |
+| `invalid_request` | A malformed request or transcript, or a provider 4xx such as an oversized context. |
+| `model_error` | Bad provider credentials, unknown model, missing configuration or a malformed tool call. |
+
+Message content never reaches a log or an error message. `KIONGA_DESIGNER_MAX_AGENT_TURNS`
+(default 32) caps concurrent turns and `KIONGA_AGENT_TURN_TIMEOUT_SECONDS` (default 600)
+bounds one call, so the gateway's client timeout must be longer. Provider SDK retries are
+off, because the gateway persists retries. Only the platform model, `llm`, can take turns.
+
+Under `MLAIOPS_LLM_BACKEND=mock` a deterministic policy replaces the provider, so a whole
+team runs with no key: a coordinator spawns each member, waits, then finishes, and a worker
+runs one safe `exec`, then finishes. A test can script a worker by putting a JSON list of
+steps between two `[[mock-script]]` markers in its task; any other backend treats that as
+plain text. See [`agent_runtime/agent_turn_mock.py`](agent_runtime/agent_turn_mock.py) for
+the format.
+
 **Published versions.** The operator mounts an immutable version artifact at
 `/app/flows/flow.json` (override with `KIONGA_NATIVE_GRAPH_PATH`) and sets
 `MLAIOPS_GRAPH_MODULE=agents.native_graph:build_native`. The runtime recomputes the

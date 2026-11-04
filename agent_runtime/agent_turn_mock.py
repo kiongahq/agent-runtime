@@ -5,7 +5,7 @@ conversion, ``bind_tools`` and reply extraction as a provider turn. The decision
 pure function of the transcript and the bound tools.
 
 **Default policy.** A turn with a ``spawn_worker`` tool is a coordinator: it spawns each
-member named in ``spawn_worker.input_schema.properties.agent.enum`` once, replies with
+member listed under ``Team members you can spawn:`` in the system prompt once, replies with
 text and no tool calls while it waits, and calls ``finish`` when every spawned member has
 reported back in a ``<kionga-data source="worker:NAME" kind="hand-back">`` frame, which is
 also how a failed worker's outcome must arrive. Any other turn is a worker: it runs one safe
@@ -40,7 +40,7 @@ from collections import OrderedDict
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import PrivateAttr
 
@@ -49,6 +49,8 @@ from .agent_turns import ERROR_CODES, TurnError
 MARKER = "[[mock-script]]"
 SCRIPT = re.compile(re.escape(MARKER) + r"(.*)" + re.escape(MARKER), re.DOTALL)
 FRAME = re.compile(r'<kionga-data\s+source="worker:([^"]+)"\s+kind="([^"]+)"')
+MEMBER_HEADING = "Team members you can spawn:"
+MEMBER_LINE = re.compile(r"^- ([a-z][a-z0-9-]{0,62}):", re.MULTILINE)
 SAFE_COMMAND = "echo kionga-mock-worker"
 STEP_KEYS = {"content", "tool_calls", "usage", "error", "times"}
 MAX_ATTEMPTS_TRACKED = 4096
@@ -106,13 +108,11 @@ def _tool_names(tools: list[dict[str, Any]]) -> set[str]:
     return {tool["function"]["name"] for tool in tools}
 
 
-def _members(tools: list[dict[str, Any]]) -> list[str]:
-    for tool in tools:
-        if tool["function"]["name"] == "spawn_worker":
-            agent = tool["function"]["parameters"].get("properties", {}).get("agent", {})
-            members = agent.get("enum") if isinstance(agent, dict) else None
-            return [str(member) for member in members] if isinstance(members, list) else []
-    return []
+def _members(messages: list[Any]) -> list[str]:
+    """Member names from the gateway's assembled system prompt."""
+    system = next((str(message.content) for message in messages if isinstance(message, SystemMessage)), "")
+    _, found, listing = system.partition(MEMBER_HEADING)
+    return MEMBER_LINE.findall(listing.split("\n\n", 1)[0]) if found else []
 
 
 def _finish_or_text(names: set[str], messages: list[Any], report: str) -> dict[str, Any]:
@@ -135,7 +135,7 @@ def _coordinator_step(messages: list[Any], tools: list[dict[str, Any]]) -> dict[
                 if call["name"] == "spawn_worker":
                     agent = str(call["args"].get("agent", ""))
                     spawned[agent] = spawned.get(agent, False) or '"error"' not in results.get(call["id"], "")
-    missing = [member for member in _members(tools) if member not in spawned]
+    missing = [member for member in _members(messages) if member not in spawned]
     if missing:
         return {"tool_calls": [
             {"name": "spawn_worker", "arguments": {"agent": member, "task": f"Handle your part of the request as {member}."}}
@@ -148,7 +148,7 @@ def _coordinator_step(messages: list[Any], tools: list[dict[str, Any]]) -> dict[
         return {"content": f"Waiting for: {', '.join(live)}."}
     finished = sorted(agent for agent, started in spawned.items() if started)
     if not finished:
-        result = "no members were spawned; spawn_worker offered none or every spawn failed"
+        result = "no members were spawned; the system prompt listed none or every spawn failed"
     else:
         result = "; ".join(f"{agent}: reported back" for agent in finished)
     return _finish_or_text(_tool_names(tools), messages, report_text(result, f"{len(finished)} worker report(s) received."))
