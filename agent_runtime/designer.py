@@ -227,8 +227,12 @@ def create_app(
 
 
 def main() -> None:
+    import logging
+
     import uvicorn
 
+    # Without a root handler the agent turn outcome lines at INFO are dropped.
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(name)s %(message)s")
     uvicorn.run(
         create_app(),
         host=os.environ.get("KIONGA_DESIGNER_HOST", "0.0.0.0"),  # nosec B104 -- container listener
