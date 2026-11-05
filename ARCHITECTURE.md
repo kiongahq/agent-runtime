@@ -31,9 +31,13 @@ The agent server.
   checkpointer (PostgreSQL when `MLAIOPS_CHECKPOINT_DSN` or `DATABASE_URL` is set,
   in-memory otherwise) and loads the graph. Routes: `GET /healthz`,
   `POST /invoke` (one turn, returns reply, usage, cost and duration) and
-  `POST /stream` (the same turn as Server-Sent Events). Agent identity comes from
-  the gateway's request headers first and `MLAIOPS_AGENT_ID` and
-  `MLAIOPS_AGENT_NAME` second, so one shared runtime can serve several agents.
+  `POST /stream` (the same turn as Server-Sent Events). With auth required
+  (production default) both turn routes need `Authorization: Bearer
+  $MLAIOPS_INTERNAL_TOKEN`, compared in constant time, and the startup fails
+  without a token. Agent identity comes from the gateway's request headers first
+  and `MLAIOPS_AGENT_ID` and `MLAIOPS_AGENT_NAME` second, so one shared runtime
+  can serve several agents; the user comes from `X-MLAIOps-User-ID`. Those
+  headers are trusted only on an authenticated request.
 - `graphs.py`: `resolve_attribute` and `build_graph` load a `module:attribute`
   spec that names a compiled graph, an uncompiled `StateGraph` or a
   `build(model, checkpointer)` factory. An attribute marked with
@@ -66,8 +70,11 @@ The agent server.
 Agent code that the runtime loads. `customer_support/graph.py` is a LangGraph
 `StateGraph` (reason, tools, respond) whose tools come from the SDK tool registry;
 its feature lookup falls back to a local profile when no feature gateway is
-configured, so it runs without infrastructure. `framework_examples.py` holds opt-in
-Agno and NOOA factories. `native_graph.py` (`build_native`) serves a
+configured, so it runs without infrastructure. The lookup takes no model-set
+arguments: it reads the caller from `configurable["user_id"]`, which the runtime
+sets from the authenticated user, so the model cannot fetch another customer's
+profile. Tools that read per-user data follow that pattern. `framework_examples.py`
+holds opt-in Agno and NOOA factories (NOOA refuses to start without a code sandbox). `native_graph.py` (`build_native`) serves a
 published native Agent Designer version after verifying its content hash.
 
 ### `features/`
@@ -80,7 +87,8 @@ published native Agent Designer version after verifying its content hash.
   snapshot through a storage-proxy presigned URL (Parquet, or JSONL without
   pyarrow), and reports lineage to the gateway.
 - `point_in_time.py`: `point_in_time_join` builds training data that never uses a
-  feature row newer than the label's timestamp.
+  feature row whose event time or creation time is after the label's timestamp,
+  so late-arriving and backfilled rows cannot leak into earlier labels.
 - `retention.py`: `sweep` sets each view's TTL on online keys
   (`mlaiops:features:<view>:<entity>`) that have no expiry and deletes keys of
   views that are no longer defined; `--dry-run` reports without changing anything.
@@ -95,7 +103,11 @@ published native Agent Designer version after verifying its content hash.
 - `service.py`: consumes `mlaiops.transactions`, `mlaiops.callcenter.transcripts`
   and `mlaiops.user.activity`, writes results to `mlaiops.fraud.alerts`,
   `mlaiops.callcenter.insights` and `mlaiops.recs.results`, and reports measured
-  throughput and latency to the gateway.
+  throughput and latency to the gateway. Delivery is at least once: the consumer
+  runs with auto-commit off and commits a poll's offsets only after every result
+  of that poll is produced. A failed batch is fetched again, so each result
+  carries `source_offset` (`topic`, `partition`, `offset` of its input record)
+  for downstream deduplication.
 - `produce.py`: sends demo events, for example
   `python -m realtime.produce --demo fraud --count 5`.
 
@@ -118,7 +130,8 @@ Gate tests for each package, with the `mock` LLM and fake HTTP and Redis clients
 ## How it connects to other components
 
 - **platform**: the gateway proxies agent invocations to the runtime with the
-  agent's identity headers and receives session reports. The runtime authenticates
+  internal token, the agent's identity headers and the authenticated user, and
+  receives session reports. The runtime authenticates
   with `MLAIOPS_TOKEN`, which deployments set to the platform's internal service
   token. On Kubernetes, the operator runs one runtime per agent with a trace-proxy
   sidecar.

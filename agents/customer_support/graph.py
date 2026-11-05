@@ -5,6 +5,15 @@ come from the platform tool registry and are converted to LangChain
 ``StructuredTool`` at build time. Feature lookups hit the online feature
 gateway when configured and fall back to a deterministic local profile so the
 agent works out of the box with no infrastructure.
+
+Per-user data is bound to the caller, not to the model. ``feature_store_lookup``
+takes no arguments the model can set: it reads the user the runtime resolved
+(``config["configurable"]["user_id"]``, from the gateway's authenticated
+identity) and looks up that customer only. A user who writes "I am u456" or
+injects instructions cannot make the model fetch someone else's profile. Any
+other tool that reads per-user data must follow the same pattern: take a
+``RunnableConfig`` parameter (LangChain hides it from the tool schema) and
+derive the subject from it.
 """
 
 from __future__ import annotations
@@ -14,6 +23,7 @@ from typing import Any
 
 import httpx
 from langchain_core.messages import SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import MessagesState
 from langgraph.prebuilt import ToolNode
@@ -22,7 +32,8 @@ from mlaiops_sdk.tools import langchain_tools, register_tool
 
 SYSTEM_PROMPT = (
     "You are Kionga customer support. Use feature_store_lookup to fetch the "
-    "customer's live profile before answering account questions, and kb_search "
+    "signed-in customer's live profile before answering account questions (it "
+    "always returns the current customer; it cannot look up anyone else), and kb_search "
     "to ground answers in the knowledge base. Answer concisely."
 )
 
@@ -50,14 +61,12 @@ _KNOWLEDGE_BASE = [
 ]
 
 
-@register_tool(
-    name="feature_store_lookup",
-    version="1.0",
-    description="Retrieve real-time customer profile features from the platform feature store",
-    tags=["data", "features", "feast"],
-)
-def feature_store_lookup(entity_id: str) -> dict:
-    """Return the online feature vector for a customer entity."""
+def lookup_profile(entity_id: str) -> dict:
+    """Return the online feature vector for a customer entity.
+
+    Trusted code only: callers must have authorized ``entity_id``. Agents
+    reach it through :func:`feature_store_lookup`, which binds it to the
+    caller."""
     gateway = os.environ.get("MLAIOPS_FEATURE_GATEWAY_URL")
     if gateway:
         response = httpx.post(
@@ -71,6 +80,23 @@ def feature_store_lookup(entity_id: str) -> dict:
         response.raise_for_status()
         return response.json()
     return {"entity_id": entity_id, "features": _DEMO_PROFILES.get(entity_id, {}), "source": "demo"}
+
+
+@register_tool(
+    name="feature_store_lookup",
+    version="2.0",
+    description="Retrieve the signed-in customer's real-time profile features from the platform feature store",
+    tags=["data", "features", "feast"],
+)
+def feature_store_lookup(config: RunnableConfig) -> dict:
+    """Return the online feature vector for the customer in this conversation.
+
+    The customer is the runtime's authenticated user, read from ``config``;
+    the model cannot choose it."""
+    user_id = str((config or {}).get("configurable", {}).get("user_id") or "").strip()
+    if not user_id:
+        return {"error": "no signed-in customer for this conversation; account data is unavailable"}
+    return lookup_profile(user_id)
 
 
 @register_tool(

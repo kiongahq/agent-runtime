@@ -10,14 +10,33 @@ locally.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /healthz` | Liveness + agent identity |
+| `GET /healthz` | Liveness, framework and auth mode (no identity; unauthenticated) |
 | `POST /invoke` | One agent turn: `{message, session_id?, user_id?}` → reply + usage counters and `usage_available` |
-| `POST /stream` | Same turn as Server-Sent Events (`{"delta": ...}` chunks, final `{"done": true, ...}` summary) |
+| `POST /stream` | Same turn as Server-Sent Events (`{"delta": ...}` chunks of model text, redacted `{"tool": name, "status": ...}` progress events, final `{"done": true, ...}` summary). Tool results are never streamed |
 
 Every turn reports a session summary to the gateway (`POST /api/v1/traces`),
 which upserts the live session (turns, tokens, cost) shown in the console.
 The gateway attributes these reports to the narrow internal `service` role when
 `MLAIOPS_INTERNAL_TOKEN` is configured; do not reuse a user personal key.
+
+## Authentication
+
+Only the gateway may call `/invoke` and `/stream`. With auth required the runtime
+expects these headers on every turn:
+
+| Header | Meaning |
+| --- | --- |
+| `Authorization: Bearer $MLAIOPS_INTERNAL_TOKEN` | Gateway credential, compared in constant time; otherwise 401 |
+| `X-MLAIOps-User-ID` | The authenticated end user; required (401 without it). A body `user_id` is ignored |
+| `X-MLAIOps-Agent-ID` / `X-MLAIOps-Agent-Name` | Control-plane agent identity for session reporting |
+| `X-MLAIOps-Graph-Module` | Entry point the gateway expects; 409 on mismatch |
+
+The credential check runs before body validation, so an unauthenticated caller
+gets 401 and never a schema error. Startup fails when auth is required and
+`MLAIOPS_INTERNAL_TOKEN` is unset or shorter than 16 characters, and when
+`MLAIOPS_RUNTIME_AUTH=disabled` is combined with `KIONGA_ENVIRONMENT=production`.
+With auth disabled (the local default) every header and the body `user_id` are
+taken as given, which is safe only on a developer machine.
 
 ## Configuration
 
@@ -26,7 +45,9 @@ The gateway attributes these reports to the narrow internal `service` role when
 | `MLAIOPS_GRAPH_MODULE` | `package.module:attribute` — compiled graph, `StateGraph`, or `build(model, checkpointer)` factory |
 | `MLAIOPS_AGENT_ID` / `MLAIOPS_AGENT_NAME` | Control-plane identity for session reporting |
 | `MLAIOPS_URL` | Gateway base URL for session reporting |
-| `MLAIOPS_INTERNAL_TOKEN` | Narrow service credential for hosted session reporting |
+| `MLAIOPS_INTERNAL_TOKEN` | Shared gateway credential: verified on `/invoke` and `/stream` when auth is required; also the session-reporting credential |
+| `MLAIOPS_RUNTIME_AUTH` | `required` or `disabled`; defaults to `required` when `KIONGA_ENVIRONMENT=production`, `disabled` otherwise |
+| `KIONGA_ENVIRONMENT` | `production` makes auth required and refuses `MLAIOPS_RUNTIME_AUTH=disabled` |
 | `DATABASE_URL` or `MLAIOPS_CHECKPOINT_DSN` | Enables the PostgreSQL LangGraph checkpointer (in-memory otherwise) |
 | `MLAIOPS_LLM_BACKEND` / `MLAIOPS_LLM_MODEL` / `MLAIOPS_LLM_BASE_URL` | Chat model selection (`openai`, `anthropic`, `openai-compatible`, `mock`) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | Full-trace delivery to Langfuse |
@@ -36,10 +57,38 @@ LLM calls should egress through the platform trace-proxy: set
 `MLAIOPS_LLM_BASE_URL` (or `OPENAI_BASE_URL`) to the proxy address so every
 request/response pair is captured.
 
+## Sessions
+
+`session_id` is a caller label, not a storage key. The checkpoint thread is
+`thread_key(agent_id, user_id, session_id)` =
+`<agent_id>:<user_id>:<session_id>`, with the agent and user ids percent-encoded,
+so one user can never resume another user's thread, and one agent never reads
+another agent's, even with a known or guessed session id. With auth required the
+user is the gateway's `X-MLAIOps-User-ID`; a body `user_id` is ignored. Supplied
+session ids must match `^[A-Za-z0-9][A-Za-z0-9._:@-]{0,199}$` (422 otherwise);
+when none is given the runtime generates a UUIDv4. The gateway session reports
+and the response keep the plain `session_id`.
+
 Session checkpoints and long-term memory are separate: checkpoints preserve graph
 thread state, while `AgentMemoryClient` stores tenant/agent/user-scoped semantic
 memories in pgvector. Keep project/user identifiers in runtime context when serving
 multiple teams.
+
+## Code execution
+
+The runtime does not execute model-generated code. Frameworks that do, such as
+NOOA, run that code inside the runtime process, which serves HTTP and holds
+provider keys and `MLAIOPS_INTERNAL_TOKEN`. Generated code there could read those
+secrets from `os.environ`, call internal services and exhaust the pod.
+
+Threat model for enabling it later: generated code is untrusted input. It needs
+an out-of-process executor (a gVisor or Firecracker runtime class, or a separate
+executor service) with no secrets in its environment, a read-only root
+filesystem, no network by default, and CPU, memory and wall-clock limits, and the
+runtime must verify that executor is configured and healthy before it starts.
+Until that exists, `agents.framework_examples:build_nooa` refuses to start
+(`require_code_sandbox`). `KIONGA_ALLOW_CODE_EXECUTION` is no longer honored: an
+environment flag is not a sandbox.
 
 ## Run locally
 

@@ -75,6 +75,33 @@ def report_stats(stats: Stats, demo: str, *, client: httpx.Client) -> None:
         pass
 
 
+def source_offset(record: dict[str, Any]) -> dict[str, Any]:
+    """Where a result came from: (topic, partition, offset) identifies the
+    input record, so a consumer can drop a result replayed after a retry."""
+    return {"topic": record.get("topic", ""), "partition": record.get("partition"), "offset": record.get("offset")}
+
+
+def process_batch(records: list[dict[str, Any]], *, consumer: Consumer, rest: KafkaRest,
+                  client: httpx.Client, stats: Stats) -> None:
+    """Process and produce every record of one poll, then commit its offsets.
+
+    If processing or producing raises, nothing is committed and the error
+    propagates: the caller recreates the consumer, which resumes from the
+    last committed offset and fetches the same records again (at least once;
+    ``source_offset`` on each result lets downstream consumers dedupe)."""
+    for record in records:
+        topic, value = record.get("topic", ""), record.get("value", {})
+        if topic not in TOPIC_HANDLERS or not isinstance(value, dict):
+            continue
+        started = time.perf_counter()
+        demo, out_topic, result = process_event(topic, value, client=client)
+        latency_ms = (time.perf_counter() - started) * 1000
+        rest.produce(out_topic, {**result, "source_offset": source_offset(record)})
+        stats.record(demo, latency_ms, flagged=bool(result.get("flagged")))
+        report_stats(stats, demo, client=client)
+    consumer.commit(records)
+
+
 def run_forever() -> None:  # pragma: no cover - long-running loop
     rest = KafkaRest()
     client = httpx.Client(timeout=30)
@@ -89,19 +116,12 @@ def run_forever() -> None:  # pragma: no cover - long-running loop
                 if consumer is None:
                     consumer = Consumer(rest, group="mlaiops-realtime", topics=list(TOPIC_HANDLERS))
                     print(f"realtime processor consuming {list(TOPIC_HANDLERS)}")
-                for record in consumer.poll(timeout_ms=2000):
-                    topic, value = record.get("topic", ""), record.get("value", {})
-                    if topic not in TOPIC_HANDLERS or not isinstance(value, dict):
-                        continue
-                    started = time.perf_counter()
-                    demo, out_topic, result = process_event(topic, value, client=client)
-                    latency_ms = (time.perf_counter() - started) * 1000
-                    rest.produce(out_topic, result)
-                    _stats.record(demo, latency_ms, flagged=bool(result.get("flagged")))
-                    report_stats(_stats, demo, client=client)
+                process_batch(consumer.poll(timeout_ms=2000), consumer=consumer, rest=rest,
+                              client=client, stats=_stats)
                 time.sleep(0.2)
             except httpx.HTTPError as error:
-                print(f"kafka poll failed ({error}); recreating consumer")
+                # Uncommitted records are fetched again by the new instance.
+                print(f"kafka batch failed ({error}); recreating consumer")
                 if consumer is not None:
                     consumer.close()
                     consumer = None

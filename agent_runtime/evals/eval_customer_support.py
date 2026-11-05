@@ -60,15 +60,11 @@ def run_eval() -> list[CaseResult]:
     judge = build_chat_model()
     results = []
     for case in golden_cases():
+        # The customer is the authenticated caller, passed the way the
+        # runtime passes it, never written into the message text.
         state = agent.invoke(
-            {
-                "messages": [
-                    (
-                        "user",
-                        f"[customer entity_id={case['user_id']}] {case['question']}",
-                    )
-                ]
-            }
+            {"messages": [("user", case["question"])]},
+            config={"configurable": {"user_id": case["user_id"]}},
         )
         answer = str(state["messages"][-1].content)
         verdict = judge.invoke(

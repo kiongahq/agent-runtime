@@ -102,3 +102,24 @@ def test_adapter_failure_is_not_reported_as_success():
 
     with TestClient(create_app(graph=CallableAdapter(broken))) as client:
         assert client.post("/invoke", json={"message": "hello"}).status_code == 502
+
+
+@pytest.mark.parametrize("flag", [None, "1", "true"])
+def test_nooa_example_refuses_to_start_without_a_sandbox(monkeypatch, flag):
+    """Code execution fails closed: the old opt-in flag is not a sandbox."""
+    from agents.framework_examples import CodeSandboxUnavailable, build_nooa
+
+    if flag is None:
+        monkeypatch.delenv("KIONGA_ALLOW_CODE_EXECUTION", raising=False)
+    else:
+        monkeypatch.setenv("KIONGA_ALLOW_CODE_EXECUTION", flag)
+    with pytest.raises(CodeSandboxUnavailable, match="isolated code-execution sandbox"):
+        build_nooa()
+
+
+def test_runtime_startup_fails_for_the_nooa_example(monkeypatch):
+    monkeypatch.setenv("MLAIOPS_GRAPH_MODULE", "agents.framework_examples:build_nooa")
+    monkeypatch.setenv("KIONGA_ALLOW_CODE_EXECUTION", "1")
+    with pytest.raises(RuntimeError, match="sandbox"):
+        with TestClient(create_app()):
+            pass
