@@ -1,0 +1,55 @@
+{
+  "target": "runner-turn-request",
+  "why": "The system prompt travels only in system, which the gateway assembles.",
+  "path": "$.messages[0]",
+  "message": "not valid under any",
+  "document": {
+    "run_id": "atr-aaaaaaaaaaaaaaaaaaaaaaaa",
+    "worker_id": "atw-bbbbbbbbbbbbbbbbbbbbbbbb",
+    "turn": 3,
+    "model": "llm",
+    "system": "You fix one defect.",
+    "messages": [
+      {
+        "role": "system",
+        "content": "x"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "c1",
+            "name": "exec",
+            "arguments": {
+              "command": "pytest -q"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "c1",
+        "content": "<kionga-data source=\"tool:exec\" kind=\"tool-result\" nonce=\"n2\">{\"exit_code\":0}</kionga-data>"
+      }
+    ],
+    "tools": [
+      {
+        "name": "exec",
+        "description": "Run a command in the sandbox.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "command": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "command"
+          ]
+        }
+      }
+    ],
+    "max_output_tokens": 8000
+  }
+}

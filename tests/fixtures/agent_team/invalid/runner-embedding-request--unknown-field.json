@@ -1,0 +1,11 @@
+{
+  "target": "runner-embedding-request",
+  "why": "A request cannot choose an embedder or carry a credential.",
+  "path": "$",
+  "message": "model",
+  "document": {
+    "text": "query",
+    "dimensions": 384,
+    "model": "other"
+  }
+}

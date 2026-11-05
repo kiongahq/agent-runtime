@@ -1,0 +1,9 @@
+{
+  "content": "Done.",
+  "tool_calls": [],
+  "usage": {
+    "input_tokens": 120,
+    "output_tokens": 2
+  },
+  "model": "llm"
+}

@@ -1,0 +1,10 @@
+{
+  "target": "runner-embedding-request",
+  "why": "Knowledge bases allow at most 4096 dimensions.",
+  "path": "$.dimensions",
+  "message": "maximum",
+  "document": {
+    "text": "query",
+    "dimensions": 4097
+  }
+}

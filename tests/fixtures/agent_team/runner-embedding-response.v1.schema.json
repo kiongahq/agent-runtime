@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kionga.dev/schemas/agent-team/runner-embedding-response/v1.json",
+  "title": "Kionga runner embedding response",
+  "description": "The HTTP 200 body of POST /embeddings. vector has exactly the requested number of dimensions, which the gateway must check. It is all zeros when the text has no tokens. Closed contract.",
+  "type": "object",
+  "required": [
+    "vector"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "vector": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "type": "number"
+      }
+    }
+  }
+}

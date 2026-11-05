@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kionga.dev/schemas/agent-team/runner-embedding-request/v1.json",
+  "title": "Kionga runner embedding request",
+  "description": "Body of POST /embeddings on the designer runner, stored nowhere. The gateway sends it with Authorization: Bearer $KIONGA_DESIGNER_RUNNER_TOKEN. Closed contract.",
+  "type": "object",
+  "required": [
+    "text",
+    "dimensions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32000,
+      "description": "The same limit as knowledge-base documents."
+    },
+    "dimensions": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4096,
+      "description": "The knowledge base's dimensions, within the limits for creating one."
+    }
+  }
+}

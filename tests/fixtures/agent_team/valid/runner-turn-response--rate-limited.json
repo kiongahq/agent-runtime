@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "rate_limited",
+    "message": "Provider rate limit.",
+    "retry_after_seconds": 30
+  }
+}

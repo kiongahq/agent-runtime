@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kionga.dev/schemas/agent-team/runner-turn-response/v1.json",
+  "title": "Kionga runner turn response",
+  "description": "The HTTP 200 body of POST /agent-turns: either a model result or an error. content is an empty string and tool_calls an empty list when the model produced none. Closed contract.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "content": {
+      "type": "string"
+    },
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tool_call"
+      }
+    },
+    "usage": {
+      "type": "object",
+      "required": [
+        "input_tokens",
+        "output_tokens"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "error": {
+      "$ref": "#/$defs/error"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "content",
+        "tool_calls",
+        "usage",
+        "model"
+      ],
+      "not": {
+        "required": [
+          "error"
+        ]
+      }
+    },
+    {
+      "required": [
+        "error"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "content"
+            ]
+          },
+          {
+            "required": [
+              "tool_calls"
+            ]
+          },
+          {
+            "required": [
+              "usage"
+            ]
+          },
+          {
+            "required": [
+              "model"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "tool_call": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "arguments"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+        },
+        "arguments": {
+          "type": "object"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "rate_limited",
+            "provider_unavailable",
+            "invalid_request",
+            "model_error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Must not contain message content."
+        },
+        "retry_after_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "From the provider's Retry-After when present, rounded up."
+        }
+      }
+    }
+  }
+}
