@@ -41,20 +41,20 @@ class Materializer:
         internal_token: str | None = None,
         client: httpx.Client | None = None,
     ) -> None:
-        self.gateway_url = (gateway_url or os.environ.get("MLAIOPS_URL", "http://localhost:8080")).rstrip("/")
+        self.gateway_url = (gateway_url or os.environ.get("KIONGA_URL", "http://localhost:8080")).rstrip("/")
         self.feature_gateway_url = (
             feature_gateway_url
-            or os.environ.get("MLAIOPS_FEATURE_GATEWAY_URL", "http://localhost:8083")
+            or os.environ.get("KIONGA_FEATURE_GATEWAY_URL", "http://localhost:8083")
         ).rstrip("/")
         self.storage_proxy_url = (
-            storage_proxy_url or os.environ.get("MLAIOPS_STORAGE_PROXY_URL", "")
+            storage_proxy_url or os.environ.get("KIONGA_STORAGE_PROXY_URL", "")
         ).rstrip("/")
-        self.internal_token = internal_token or os.environ.get("MLAIOPS_INTERNAL_TOKEN", "")
+        self.internal_token = internal_token or os.environ.get("KIONGA_INTERNAL_TOKEN", "")
         self.client = client or httpx.Client(timeout=10)
         self.run_id = f"mat-{uuid.uuid4().hex[:12]}"
 
     def _headers(self) -> dict[str, str]:
-        headers = {"X-MLAIOps-Actor": "materializer"}
+        headers = {"X-Kionga-Actor": "materializer"}
         if self.internal_token:
             headers["Authorization"] = f"Bearer {self.internal_token}"
         return headers
@@ -140,7 +140,7 @@ class Materializer:
         presign = self.client.post(
             f"{self.storage_proxy_url}/presign",
             json={
-                "bucket": "mlaiops-features",
+                "bucket": "kionga-features",
                 "key": f"{view_name}/snapshot.{extension}",
                 "operation": "PUT",
                 "ttl_seconds": 300,
@@ -150,7 +150,7 @@ class Materializer:
         presign.raise_for_status()
         upload = self.client.put(presign.json()["url"], content=content)
         upload.raise_for_status()
-        return f"s3://mlaiops-features/{view_name}/snapshot.{extension}"
+        return f"s3://kionga-features/{view_name}/snapshot.{extension}"
 
     def dependency_health_urls(self) -> list[str]:
         urls = [f"{self.gateway_url}/api/v1/health", f"{self.feature_gateway_url}/healthz"]
@@ -184,7 +184,7 @@ class Materializer:
             delay = min(delay * 2, 5.0)
 
     def run(self) -> dict[str, int]:
-        self.wait_for_dependencies(float(os.environ.get("MLAIOPS_DEPENDENCY_TIMEOUT_SECONDS", "120")))
+        self.wait_for_dependencies(float(os.environ.get("KIONGA_DEPENDENCY_TIMEOUT_SECONDS", "120")))
         self.apply_definitions()
         return {view["name"]: self.materialize_view(view) for view in FEATURE_VIEWS}
 

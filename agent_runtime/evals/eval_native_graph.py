@@ -1,7 +1,7 @@
 """Native graph eval: starter templates run through the interpreter against a real LLM.
 
-Paid lane. Runs only when ``MLAIOPS_RUN_EVALS=1`` and a real LLM backend is
-configured (``MLAIOPS_LLM_BACKEND`` + provider key). Scoring is deterministic:
+Paid lane. Runs only when ``KIONGA_RUN_EVALS=1`` and a real LLM backend is
+configured (``KIONGA_LLM_BACKEND`` + provider key). Scoring is deterministic:
 
 - ``structured-extraction``: the reply parses as JSON and each expected field
   matches (case-insensitive); the score is the fraction of matching fields.
@@ -11,7 +11,7 @@ configured (``MLAIOPS_LLM_BACKEND`` + provider key). Scoring is deterministic:
 Pass threshold: mean score >= 0.7 and no case below 0.4.
 
 Run:
-    MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
+    KIONGA_RUN_EVALS=1 KIONGA_LLM_BACKEND=openai OPENAI_API_KEY=... \
         python -m pytest agent_runtime/evals/eval_native_graph.py -q
 """
 
@@ -70,7 +70,7 @@ def score_case(case: dict, events: list[dict]) -> tuple[str, float]:
 
 
 async def _run_case(case: dict) -> list[dict]:
-    from mlaiops_sdk.llm import build_chat_model
+    from kionga.llm import build_chat_model
 
     from agent_runtime.native_graph import normalize, run_graph
 
@@ -96,8 +96,8 @@ def summarize(results: list[CaseResult]) -> tuple[float, bool]:
 def test_native_graph_eval():
     import pytest
 
-    if os.environ.get("MLAIOPS_RUN_EVALS") != "1":
-        pytest.skip("evals are the paid lane; set MLAIOPS_RUN_EVALS=1")
+    if os.environ.get("KIONGA_RUN_EVALS") != "1":
+        pytest.skip("evals are the paid lane; set KIONGA_RUN_EVALS=1")
     results = run_eval()
     mean, passed = summarize(results)
     detail = "\n".join(f"  {r.case_id}: {r.score:.2f} — {r.reply[:80]}" for r in results)
@@ -105,8 +105,8 @@ def test_native_graph_eval():
 
 
 if __name__ == "__main__":
-    if os.environ.get("MLAIOPS_RUN_EVALS") != "1":
-        raise SystemExit("set MLAIOPS_RUN_EVALS=1 to run the paid eval lane")
+    if os.environ.get("KIONGA_RUN_EVALS") != "1":
+        raise SystemExit("set KIONGA_RUN_EVALS=1 to run the paid eval lane")
     eval_results = run_eval()
     eval_mean, eval_passed = summarize(eval_results)
     for result in eval_results:

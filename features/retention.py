@@ -1,6 +1,6 @@
 """TTL and retention sweep for online feature keys in Redis.
 
-Online rows live at ``mlaiops:features:<view>:<entity>``. The feature
+Online rows live at ``kionga:features:<view>:<entity>``. The feature
 gateway writes them without an expiry, so this sweep enforces each view's
 ``ttl_seconds``:
 
@@ -22,7 +22,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol
 
-KEY_PREFIX = "mlaiops:features:"
+KEY_PREFIX = "kionga:features:"
 
 
 class RedisLike(Protocol):

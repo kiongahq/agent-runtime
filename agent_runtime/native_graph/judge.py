@@ -41,13 +41,13 @@ class JudgeError(RuntimeError):
 
 
 def judge_backend() -> tuple[str, str]:
-    backend = os.environ.get("KIONGA_JUDGE_BACKEND") or os.environ.get("MLAIOPS_LLM_BACKEND", "openai")
-    model = os.environ.get("KIONGA_JUDGE_MODEL") or os.environ.get("MLAIOPS_LLM_MODEL", "")
+    backend = os.environ.get("KIONGA_JUDGE_BACKEND") or os.environ.get("KIONGA_LLM_BACKEND", "openai")
+    model = os.environ.get("KIONGA_JUDGE_MODEL") or os.environ.get("KIONGA_LLM_MODEL", "")
     return backend.lower(), model
 
 
 def build_judge_model():
-    from mlaiops_sdk.llm import build_chat_model
+    from kionga.llm import build_chat_model
 
     backend, model = judge_backend()
     if backend == "mock":

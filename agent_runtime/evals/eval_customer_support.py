@@ -1,13 +1,13 @@
 """Customer-support agent eval: golden Q/A scored by an LLM judge.
 
-Paid lane. Runs only when ``MLAIOPS_RUN_EVALS=1`` and a real LLM backend is
-configured (``MLAIOPS_LLM_BACKEND`` + provider key). The judge uses the same
+Paid lane. Runs only when ``KIONGA_RUN_EVALS=1`` and a real LLM backend is
+configured (``KIONGA_LLM_BACKEND`` + provider key). The judge uses the same
 provider. Pass threshold: mean score >= 0.7 and no case below 0.4.
 
 Run:
-    MLAIOPS_RUN_EVALS=1 OPENAI_API_KEY=... python -m pytest python/agent_runtime/evals -q
+    KIONGA_RUN_EVALS=1 OPENAI_API_KEY=... python -m pytest python/agent_runtime/evals -q
 or standalone:
-    MLAIOPS_RUN_EVALS=1 python python/agent_runtime/evals/eval_customer_support.py
+    KIONGA_RUN_EVALS=1 python python/agent_runtime/evals/eval_customer_support.py
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def _parse_score(text: str) -> float:
 
 def run_eval() -> list[CaseResult]:
     from agents.customer_support.graph import build
-    from mlaiops_sdk.llm import build_chat_model
+    from kionga.llm import build_chat_model
 
     agent = build()
     judge = build_chat_model()
@@ -92,8 +92,8 @@ def summarize(results: list[CaseResult]) -> tuple[float, bool]:
 def test_customer_support_eval():
     import pytest
 
-    if os.environ.get("MLAIOPS_RUN_EVALS") != "1":
-        pytest.skip("evals are the paid lane; set MLAIOPS_RUN_EVALS=1")
+    if os.environ.get("KIONGA_RUN_EVALS") != "1":
+        pytest.skip("evals are the paid lane; set KIONGA_RUN_EVALS=1")
     results = run_eval()
     mean, passed = summarize(results)
     detail = "\n".join(f"  {r.case_id}: {r.score:.2f} — {r.answer[:80]}" for r in results)
@@ -101,8 +101,8 @@ def test_customer_support_eval():
 
 
 if __name__ == "__main__":
-    if os.environ.get("MLAIOPS_RUN_EVALS") != "1":
-        raise SystemExit("set MLAIOPS_RUN_EVALS=1 to run the paid eval lane")
+    if os.environ.get("KIONGA_RUN_EVALS") != "1":
+        raise SystemExit("set KIONGA_RUN_EVALS=1 to run the paid eval lane")
     eval_results = run_eval()
     eval_mean, eval_passed = summarize(eval_results)
     for result in eval_results:

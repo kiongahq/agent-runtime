@@ -27,16 +27,16 @@ installed from a tagged release (`SDK_VERSION`) or a sibling checkout
 The agent server.
 
 - `app.py`: `create_app` builds the FastAPI app. On startup it reads
-  `MLAIOPS_GRAPH_MODULE`, builds the chat model with `mlaiops_sdk.llm`, picks a
-  checkpointer (PostgreSQL when `MLAIOPS_CHECKPOINT_DSN` or `DATABASE_URL` is set,
+  `KIONGA_GRAPH_MODULE`, builds the chat model with `kionga.llm`, picks a
+  checkpointer (PostgreSQL when `KIONGA_CHECKPOINT_DSN` or `DATABASE_URL` is set,
   in-memory otherwise) and loads the graph. Routes: `GET /healthz`,
   `POST /invoke` (one turn, returns reply, usage, cost and duration) and
   `POST /stream` (the same turn as Server-Sent Events). With auth required
   (production default) both turn routes need `Authorization: Bearer
-  $MLAIOPS_INTERNAL_TOKEN`, compared in constant time, and the startup fails
+  $KIONGA_INTERNAL_TOKEN`, compared in constant time, and the startup fails
   without a token. Agent identity comes from the gateway's request headers first
-  and `MLAIOPS_AGENT_ID` and `MLAIOPS_AGENT_NAME` second, so one shared runtime
-  can serve several agents; the user comes from `X-MLAIOps-User-ID`. Those
+  and `KIONGA_AGENT_ID` and `KIONGA_AGENT_NAME` second, so one shared runtime
+  can serve several agents; the user comes from `X-Kionga-User-ID`. Those
   headers are trusted only on an authenticated request.
 - `graphs.py`: `resolve_attribute` and `build_graph` load a `module:attribute`
   spec that names a compiled graph, an uncompiled `StateGraph` or a
@@ -44,12 +44,12 @@ The agent server.
   `kionga_framework` (by the SDK's `agent_factory`) is a framework adapter that
   owns its own model and session state.
 - `reporting.py`: `usage_from_messages` sums token counts from LangChain
-  `usage_metadata`; `Usage.cost_usd` applies `MLAIOPS_COST_PER_1K_INPUT` and
-  `MLAIOPS_COST_PER_1K_OUTPUT` (zero when unset); `report_session` sends the turn
+  `usage_metadata`; `Usage.cost_usd` applies `KIONGA_COST_PER_1K_INPUT` and
+  `KIONGA_COST_PER_1K_OUTPUT` (zero when unset); `report_session` sends the turn
   summary to the gateway through the SDK's `record_trace`
   (`POST /api/v1/traces`).
-- `__main__.py`: starts uvicorn on `MLAIOPS_RUNTIME_HOST` and
-  `MLAIOPS_RUNTIME_PORT` (default `9000`).
+- `__main__.py`: starts uvicorn on `KIONGA_RUNTIME_HOST` and
+  `KIONGA_RUNTIME_PORT` (default `9000`).
 - `native_graph/`: the interpreter for native Agent Designer graphs.
   `components.v1.json` is a byte-identical copy of the contracts registry (a test
   compares them); `migrate.normalize` upgrades schema version 1 drafts in memory;
@@ -68,7 +68,7 @@ The agent server.
   contract error using only the exception's class, HTTP status and short provider code,
   so a provider error that quotes the prompt goes no further. Tool calls return to the
   gateway as data; nothing a model returns runs here. `agent_turn_mock.py` is the real
-  LangChain model behind `MLAIOPS_LLM_BACKEND=mock`: its decisions are a function of the
+  LangChain model behind `KIONGA_LLM_BACKEND=mock`: its decisions are a function of the
   transcript, and it is the only reader of `[[mock-script]]`. `embed` serves
   `POST /embeddings` with the embedder knowledge nodes use.
 - `evals/`: the paid eval lane. `eval_customer_support.py` runs the example agent
@@ -101,7 +101,7 @@ published native Agent Designer version after verifying its content hash.
   feature row whose event time or creation time is after the label's timestamp,
   so late-arriving and backfilled rows cannot leak into earlier labels.
 - `retention.py`: `sweep` sets each view's TTL on online keys
-  (`mlaiops:features:<view>:<entity>`) that have no expiry and deletes keys of
+  (`kionga:features:<view>:<entity>`) that have no expiry and deletes keys of
   views that are no longer defined; `--dry-run` reports without changing anything.
 
 ### `realtime/`
@@ -111,9 +111,9 @@ published native Agent Designer version after verifying its content hash.
 - `demos.py`: three processors (fraud scoring, call-center transcript analysis,
   recommendations). Each falls back to deterministic rules when no model or agent
   endpoint is configured.
-- `service.py`: consumes `mlaiops.transactions`, `mlaiops.callcenter.transcripts`
-  and `mlaiops.user.activity`, writes results to `mlaiops.fraud.alerts`,
-  `mlaiops.callcenter.insights` and `mlaiops.recs.results`, and reports measured
+- `service.py`: consumes `kionga.transactions`, `kionga.callcenter.transcripts`
+  and `kionga.user.activity`, writes results to `kionga.fraud.alerts`,
+  `kionga.callcenter.insights` and `kionga.recs.results`, and reports measured
   throughput and latency to the gateway. Delivery is at least once: the consumer
   runs with auto-commit off and commits a poll's offsets only after every result
   of that poll is produced. A failed batch is fetched again, so each result
@@ -143,10 +143,10 @@ Gate tests for each package, with the `mock` LLM and fake HTTP and Redis clients
 - **platform**: the gateway proxies agent invocations to the runtime with the
   internal token, the agent's identity headers and the authenticated user, and
   receives session reports. The runtime authenticates
-  with `MLAIOPS_TOKEN`, which deployments set to the platform's internal service
+  with `KIONGA_TOKEN`, which deployments set to the platform's internal service
   token. On Kubernetes, the operator runs one runtime per agent with a trace-proxy
   sidecar.
-- **trace-proxy**: `MLAIOPS_LLM_BASE_URL` points the `openai` and
+- **trace-proxy**: `KIONGA_LLM_BASE_URL` points the `openai` and
   `openai-compatible` backends at the proxy, which records each LLM call.
 - **sdk-python**: provides the LLM factory, tools, tracing, memory, checkpointer
   and framework adapters.

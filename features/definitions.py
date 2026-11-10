@@ -20,7 +20,7 @@ FEATURE_VIEWS: list[dict[str, Any]] = [
             {"name": "csat_90d", "type": "float64"},
         ],
         "tags": ["customer", "support"],
-        "source": "s3://mlaiops-features/customer_profile",
+        "source": "s3://kionga-features/customer_profile",
         "ttl_seconds": 3600,
     },
     {
@@ -33,7 +33,7 @@ FEATURE_VIEWS: list[dict[str, Any]] = [
             {"name": "home_region", "type": "string"},
         ],
         "tags": ["fraud", "realtime"],
-        "source": "s3://mlaiops-features/transaction_stats_5m",
+        "source": "s3://kionga-features/transaction_stats_5m",
         "ttl_seconds": 300,
     },
 ]

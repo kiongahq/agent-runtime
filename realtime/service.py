@@ -61,14 +61,14 @@ def process_event(topic: str, event: dict[str, Any], *, client: httpx.Client) ->
 
 
 def report_stats(stats: Stats, demo: str, *, client: httpx.Client) -> None:
-    gateway = os.environ.get("MLAIOPS_URL")
+    gateway = os.environ.get("KIONGA_URL")
     if not gateway:
         return
     try:
         client.post(
             f"{gateway.rstrip('/')}/api/v1/realtime/{demo}",
             json=stats.snapshot(demo),
-            headers={"X-MLAIOps-Actor": "realtime-processor", **({"Authorization": f"Bearer {os.environ['MLAIOPS_TOKEN']}"} if os.environ.get("MLAIOPS_TOKEN") else {})},
+            headers={"X-Kionga-Actor": "realtime-processor", **({"Authorization": f"Bearer {os.environ['KIONGA_TOKEN']}"} if os.environ.get("KIONGA_TOKEN") else {})},
             timeout=5,
         )
     except httpx.HTTPError:
@@ -114,7 +114,7 @@ def run_forever() -> None:  # pragma: no cover - long-running loop
             # Recreate the consumer and keep going instead.
             try:
                 if consumer is None:
-                    consumer = Consumer(rest, group="mlaiops-realtime", topics=list(TOPIC_HANDLERS))
+                    consumer = Consumer(rest, group="kionga-realtime", topics=list(TOPIC_HANDLERS))
                     print(f"realtime processor consuming {list(TOPIC_HANDLERS)}")
                 process_batch(consumer.poll(timeout_ms=2000), consumer=consumer, rest=rest,
                               client=client, stats=_stats)

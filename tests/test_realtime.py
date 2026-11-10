@@ -78,7 +78,7 @@ def test_callcenter_rule_sentiment(monkeypatch):
 
 
 def test_callcenter_routes_through_agent(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_URL", "http://gateway")
+    monkeypatch.setenv("KIONGA_URL", "http://gateway")
     monkeypatch.setenv("CALLCENTER_AGENT_ID", "agt-1")
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -108,7 +108,7 @@ def test_recommendations_rank_by_plan():
 
 
 def test_process_event_routes_topics(monkeypatch):
-    monkeypatch.delenv("MLAIOPS_FEATURE_GATEWAY_URL", raising=False)
+    monkeypatch.delenv("KIONGA_FEATURE_GATEWAY_URL", raising=False)
     monkeypatch.delenv("CALLCENTER_AGENT_ID", raising=False)
     monkeypatch.delenv("FRAUD_MODEL_ENDPOINT", raising=False)
     demo, out_topic, result = process_event(
@@ -139,8 +139,8 @@ def test_kafka_produce_uses_confluent_envelope():
         return httpx.Response(200, json={"offsets": []})
 
     rest = KafkaRest("http://kafka-rest:8082", client=httpx.Client(transport=httpx.MockTransport(handler)))
-    rest.produce("mlaiops.transactions", {"entity_id": "u1"})
-    assert recorded["path"] == "/topics/mlaiops.transactions"
+    rest.produce("kionga.transactions", {"entity_id": "u1"})
+    assert recorded["path"] == "/topics/kionga.transactions"
     assert recorded["content_type"] == "application/vnd.kafka.json.v2+json"
     assert recorded["body"] == {"records": [{"value": {"entity_id": "u1"}}]}
 
@@ -234,8 +234,8 @@ def test_produce_failure_mid_batch_commits_nothing_and_replays(monkeypatch):
     """A batch of three: the second produce fails. No offset is committed, a
     recreated consumer fetches all three again, and after recovery every
     record has a result carrying its source offset."""
-    monkeypatch.delenv("MLAIOPS_URL", raising=False)
-    monkeypatch.delenv("MLAIOPS_FEATURE_GATEWAY_URL", raising=False)
+    monkeypatch.delenv("KIONGA_URL", raising=False)
+    monkeypatch.delenv("KIONGA_FEATURE_GATEWAY_URL", raising=False)
     fake, rest = fake_kafka({demos.RECS_TOPIC_IN: [{"entity_id": f"u{i}"} for i in range(3)]})
     client, stats = offline_client(), Stats()
 

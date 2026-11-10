@@ -1,7 +1,7 @@
 """Judge calibration eval: the rubric judge must rank good replies above bad ones.
 
-Paid lane. Runs only when ``MLAIOPS_RUN_EVALS=1`` and a real judge backend is
-configured (``KIONGA_JUDGE_BACKEND``/``MLAIOPS_LLM_BACKEND`` + provider key).
+Paid lane. Runs only when ``KIONGA_RUN_EVALS=1`` and a real judge backend is
+configured (``KIONGA_JUDGE_BACKEND``/``KIONGA_LLM_BACKEND`` + provider key).
 
 Each golden pair has a good and a bad reply for one criterion (including one
 bad reply that tries to instruct the judge). A pair passes when the good reply
@@ -10,7 +10,7 @@ scores at least 0.6, the bad reply at most 0.4, and the gap is at least 0.3.
 Pass threshold: >= 0.85 of pairs pass, and the prompt-injection pair passes.
 
 Run:
-    MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \\
+    KIONGA_RUN_EVALS=1 KIONGA_LLM_BACKEND=openai OPENAI_API_KEY=... \\
         python -m pytest agent_runtime/evals/eval_judge.py -q
 """
 
@@ -57,8 +57,8 @@ def test_scoring_rule_is_strict():
     assert any("ignore your rubric" in p["bad"] for p in pairs)
 
 
-@pytest.mark.skipif(os.environ.get("MLAIOPS_RUN_EVALS") != "1" or judge_backend()[0] == "mock",
-                    reason="paid lane: set MLAIOPS_RUN_EVALS=1 and a real judge backend")
+@pytest.mark.skipif(os.environ.get("KIONGA_RUN_EVALS") != "1" or judge_backend()[0] == "mock",
+                    reason="paid lane: set KIONGA_RUN_EVALS=1 and a real judge backend")
 def test_judge_ranks_good_replies_above_bad_ones():
     model = build_judge_model()
     results = {pair["id"]: asyncio.run(score_pair(model, pair)) for pair in golden_pairs()}

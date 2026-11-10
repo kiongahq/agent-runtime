@@ -113,16 +113,16 @@ def openai_function(call_id, name, arguments):
 def use_backend(monkeypatch, backend, url):
     """Configure the environment as an operator would; the default factory does the rest."""
     for name in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_API_URL", "ANTHROPIC_BASE_URL",
-                 "MLAIOPS_LLM_MODEL", "MLAIOPS_LLM_BASE_URL"):
+                 "KIONGA_LLM_MODEL", "KIONGA_LLM_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", backend)
-    monkeypatch.setenv("MLAIOPS_LLM_MODEL", "test-model")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", backend)
+    monkeypatch.setenv("KIONGA_LLM_MODEL", "test-model")
     if backend == "anthropic":
         monkeypatch.setenv("ANTHROPIC_API_KEY", "unit-test-key")
         monkeypatch.setenv("ANTHROPIC_API_URL", url)
     else:
         monkeypatch.setenv("OPENAI_API_KEY", "unit-test-key")
-        monkeypatch.setenv("MLAIOPS_LLM_BASE_URL", url)
+        monkeypatch.setenv("KIONGA_LLM_BASE_URL", url)
 
 
 def client(**kwargs):
@@ -141,7 +141,7 @@ def post(app, payload):
 
 
 def test_the_runner_credential_is_checked_before_the_body(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     app = client()
     assert app.post("/agent-turns", json={}).status_code == 401
     assert app.post("/agent-turns", content=b"not json").status_code == 401
@@ -157,7 +157,7 @@ def test_the_test_request_is_itself_a_contract_request():
 
 
 def test_contract_valid_requests_are_accepted(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     examples = sorted((CONTRACT / "valid").glob("runner-turn-request--*.json"))
     assert examples
     for path in examples:
@@ -165,7 +165,7 @@ def test_contract_valid_requests_are_accepted(monkeypatch):
 
 
 def test_contract_invalid_requests_are_refused(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     examples = sorted((CONTRACT / "invalid").glob("runner-turn-request--*.json"))
     assert len(examples) >= 3
     for path in examples:
@@ -303,7 +303,7 @@ def test_no_tools_are_bound_when_none_are_offered(monkeypatch, provider):
 
 def test_nulls_are_refused_as_the_closed_contract_requires(monkeypatch):
     """A Go nil slice marshals to null, so the gateway must send [] or omit the field."""
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     app = client()
     assert post(app, turn(tools=None))["error"]["code"] == "invalid_request"
     assert post(app, turn(messages=[USER, {"role": "assistant", "content": "x", "tool_calls": None}, USER]))["error"]["code"] == "invalid_request"
@@ -429,7 +429,7 @@ def test_a_slow_provider_is_provider_unavailable():
 
 
 def test_capacity_is_a_retryable_rate_limit(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     turns = AgentTurns(max_active=1)
     turns.active = 1
     app = TestClient(create_app(token=TOKEN, agent_turns=turns))
@@ -517,7 +517,7 @@ CALL = {"role": "assistant", "content": "", "tool_calls": [{"id": "c1", "name": 
         {"id": "c1", "name": "a", "arguments": {}}, {"id": "c1", "name": "a", "arguments": {}}]}, USER]}, "duplicate"),
 ])
 def test_bad_requests_are_invalid_request_and_echo_no_content(monkeypatch, overrides, fragment):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     error = post(client(), turn(**overrides))["error"]
     assert error["code"] == "invalid_request"
     assert fragment in error["message"]
@@ -525,7 +525,7 @@ def test_bad_requests_are_invalid_request_and_echo_no_content(monkeypatch, overr
 
 
 def test_non_json_and_oversized_bodies_are_invalid_request(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     app = client()
     response = app.post("/agent-turns", content=b"{not json", headers=AUTH)
     assert response.status_code == 200 and response.json()["error"]["code"] == "invalid_request"
@@ -566,7 +566,7 @@ EXEC = {"name": "exec", "description": "Run", "input_schema": {"type": "object",
 
 @pytest.fixture
 def mock_app(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     return client()
 
 
@@ -638,7 +638,7 @@ def test_mock_coordinator_does_not_wait_on_a_failed_spawn(mock_app):
 
 
 def test_mock_is_deterministic_across_fresh_processes(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     for payload in (turn(tools=[EXEC, FINISH]), turn(system=COORDINATOR_SYSTEM, messages=[{"role": "user", "content": "x"}], tools=[SPAWN, FINISH])):
         replies = [post(client(), payload) for _ in range(3)]
         assert replies[0] == replies[1] == replies[2]

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from langchain_core.messages import HumanMessage
 
 from agent_runtime.app import create_app
-from mlaiops_sdk.agent_adapters import AgentResult, AgnoAdapter, CallableAdapter, NooaAdapter
+from kionga.agent_adapters import AgentResult, AgnoAdapter, CallableAdapter, NooaAdapter
 
 
 def state(text="hello"):
@@ -71,8 +71,8 @@ async def test_custom_sync_and_async_contracts():
 
 
 def test_framework_managed_startup_does_not_construct_langgraph_provider(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_GRAPH_MODULE", "agents.framework_examples:build_custom")
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "not-a-langchain-provider")
+    monkeypatch.setenv("KIONGA_GRAPH_MODULE", "agents.framework_examples:build_custom")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "not-a-langchain-provider")
     monkeypatch.setenv("DATABASE_URL", "must-not-be-used-by-custom-adapter")
     with TestClient(create_app()) as client:
         assert client.get("/healthz").json()["framework"] == "custom"
@@ -87,10 +87,10 @@ def test_framework_managed_startup_does_not_construct_langgraph_provider(monkeyp
 
 
 def test_runtime_rejects_different_deployed_entrypoint(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_GRAPH_MODULE", "agents.framework_examples:build_custom")
+    monkeypatch.setenv("KIONGA_GRAPH_MODULE", "agents.framework_examples:build_custom")
     with TestClient(create_app()) as client:
         for route in ("/healthz", "/invoke", "/stream"):
-            headers = {"X-MLAIOps-Graph-Module": "other.agent:build"}
+            headers = {"X-Kionga-Graph-Module": "other.agent:build"}
             response = client.get(route, headers=headers) if route == "/healthz" else client.post(
                 route, headers=headers, json={"message": "hello"})
             assert response.status_code == 409
@@ -118,7 +118,7 @@ def test_nooa_example_refuses_to_start_without_a_sandbox(monkeypatch, flag):
 
 
 def test_runtime_startup_fails_for_the_nooa_example(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_GRAPH_MODULE", "agents.framework_examples:build_nooa")
+    monkeypatch.setenv("KIONGA_GRAPH_MODULE", "agents.framework_examples:build_nooa")
     monkeypatch.setenv("KIONGA_ALLOW_CODE_EXECUTION", "1")
     with pytest.raises(RuntimeError, match="sandbox"):
         with TestClient(create_app()):

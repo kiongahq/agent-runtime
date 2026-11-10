@@ -24,7 +24,7 @@ Configuration (environment):
 - ``KIONGA_DESIGNER_MAX_AGENT_TURNS`` — concurrent agent turns before ``rate_limited``
   (default 32).
 - ``KIONGA_AGENT_TURN_TIMEOUT_SECONDS`` — one agent turn's model call (default 600).
-- ``MLAIOPS_LLM_BACKEND`` / ``MLAIOPS_LLM_MODEL`` / ``MLAIOPS_LLM_BASE_URL`` — the
+- ``KIONGA_LLM_BACKEND`` / ``KIONGA_LLM_MODEL`` / ``KIONGA_LLM_BASE_URL`` — the
   platform chat model used by ``model`` nodes set to ``llm``.
 """
 
@@ -91,7 +91,7 @@ def _runner_token() -> str:
 
 
 def _default_llm_factory():
-    from mlaiops_sdk.llm import build_chat_model
+    from kionga.llm import build_chat_model
 
     return build_chat_model()
 

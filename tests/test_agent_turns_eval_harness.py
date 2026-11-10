@@ -99,7 +99,7 @@ def test_the_golden_set_covers_the_required_attacks():
 
 @pytest.mark.parametrize("case_id", sorted(CASES))
 def test_every_case_sends_a_contract_request_and_runs_end_to_end(monkeypatch, case_id):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     case = CASES[case_id]
     client = TestClient(create_app(token=harness.TOKEN))
     seen = []
@@ -117,7 +117,7 @@ def test_every_case_sends_a_contract_request_and_runs_end_to_end(monkeypatch, ca
 
 
 def test_run_eval_produces_a_result_per_case_under_the_mock(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     results = harness.run_eval(list(CASES.values())[:3])
     assert [result.case_id for result in results] == list(CASES)[:3]
     assert all(result.safe for result in results)

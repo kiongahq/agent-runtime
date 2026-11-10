@@ -34,8 +34,8 @@ For local development without Docker, install the dependencies with
 Serve the example customer support agent with the deterministic mock LLM:
 
 ```bash
-MLAIOPS_GRAPH_MODULE=agents.customer_support.graph:build \
-MLAIOPS_LLM_BACKEND=mock \
+KIONGA_GRAPH_MODULE=agents.customer_support.graph:build \
+KIONGA_LLM_BACKEND=mock \
 python -m agent_runtime                       # listens on :9000
 
 curl -X POST http://localhost:9000/invoke \
@@ -46,8 +46,8 @@ curl -X POST http://localhost:9000/invoke \
 The response holds the reply, the session ID, token counts, cost and duration.
 `POST /stream` returns the same turn as Server-Sent Events, and `GET /healthz`
 reports liveness. Locally the runtime accepts any caller; in production
-(`KIONGA_ENVIRONMENT=production`, or `MLAIOPS_RUNTIME_AUTH=required`) `/invoke` and
-`/stream` accept only the gateway, authenticated with `MLAIOPS_INTERNAL_TOKEN`
+(`KIONGA_ENVIRONMENT=production`, or `KIONGA_RUNTIME_AUTH=required`) `/invoke` and
+`/stream` accept only the gateway, authenticated with `KIONGA_INTERNAL_TOKEN`
 (see [`agent_runtime/README.md`](agent_runtime/README.md#authentication)). The workers start with
 `python -m features.materialize` and `python -m realtime.service`.
 
@@ -58,7 +58,7 @@ LFX 1.13.x and pinned OpenAI, OpenAI-compatible, Anthropic, and Ollama extension
 Build it with `--build-arg RUNTIME_FLAVOR=langflow`, or use the image
 published by CI. The Kubernetes operator mounts a selected flow revision at
 `/app/flows/flow.json` and sets
-`MLAIOPS_GRAPH_MODULE=agents.langflow_adapter:build_langflow`. An adjacent
+`KIONGA_GRAPH_MODULE=agents.langflow_adapter:build_langflow`. An adjacent
 `kionga-api` helper gives Kionga components a project-scoped gateway identity;
 its token is not mounted into the agent process or stored in the flow. The
 runtime executes each turn through `lfx run` and reports a complete reply.
@@ -85,7 +85,7 @@ adds credentials server-side; no secret ever enters a graph or this process.
 **Playground runner.** The gateway runs drafts on a separate service:
 
 ```bash
-KIONGA_DESIGNER_RUNNER_TOKEN=$(openssl rand -hex 24) MLAIOPS_LLM_BACKEND=mock \
+KIONGA_DESIGNER_RUNNER_TOKEN=$(openssl rand -hex 24) KIONGA_LLM_BACKEND=mock \
 python -m agent_runtime.designer              # listens on :9100
 ```
 
@@ -125,7 +125,7 @@ Through trace-proxy, a call also ends at the proxy's write timeout. A slower cal
 `provider_unavailable` after the provider has already been paid, so keep that timeout above
 `KIONGA_AGENT_TURN_TIMEOUT_SECONDS`.
 
-Under `MLAIOPS_LLM_BACKEND=mock` a deterministic policy replaces the provider, so a whole
+Under `KIONGA_LLM_BACKEND=mock` a deterministic policy replaces the provider, so a whole
 team runs with no key: a coordinator spawns each member, waits, then finishes, and a worker
 runs one safe `exec`, then finishes. A test can script a worker by putting a JSON list of
 steps between two `[[mock-script]]` markers in its task; any other backend treats that as
@@ -139,7 +139,7 @@ bases. A malformed body is HTTP 422 with an `invalid_request` error that holds n
 
 **Published versions.** The operator mounts an immutable version artifact at
 `/app/flows/flow.json` (override with `KIONGA_NATIVE_GRAPH_PATH`) and sets
-`MLAIOPS_GRAPH_MODULE=agents.native_graph:build_native`. The runtime recomputes the
+`KIONGA_GRAPH_MODULE=agents.native_graph:build_native`. The runtime recomputes the
 artifact's canonical behavior hash and refuses to start when it does not match, then
 serves `/invoke` and `/stream` like any other agent. Resource nodes call the
 adjacent loopback `kionga-api` helper (`127.0.0.1:8890`), which holds the agent's

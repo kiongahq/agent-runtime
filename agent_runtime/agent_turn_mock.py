@@ -1,4 +1,4 @@
-"""Deterministic model for ``POST /agent-turns`` under ``MLAIOPS_LLM_BACKEND=mock``.
+"""Deterministic model for ``POST /agent-turns`` under ``KIONGA_LLM_BACKEND=mock``.
 
 It is a real LangChain chat model, so a mock turn goes through the same message
 conversion, ``bind_tools`` and reply extraction as a provider turn. The decision is a

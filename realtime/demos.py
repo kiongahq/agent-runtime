@@ -14,12 +14,12 @@ from typing import Any
 
 import httpx
 
-FRAUD_TOPIC_IN = "mlaiops.transactions"
-FRAUD_TOPIC_OUT = "mlaiops.fraud.alerts"
-CALLCENTER_TOPIC_IN = "mlaiops.callcenter.transcripts"
-CALLCENTER_TOPIC_OUT = "mlaiops.callcenter.insights"
-RECS_TOPIC_IN = "mlaiops.user.activity"
-RECS_TOPIC_OUT = "mlaiops.recs.results"
+FRAUD_TOPIC_IN = "kionga.transactions"
+FRAUD_TOPIC_OUT = "kionga.fraud.alerts"
+CALLCENTER_TOPIC_IN = "kionga.callcenter.transcripts"
+CALLCENTER_TOPIC_OUT = "kionga.callcenter.insights"
+RECS_TOPIC_IN = "kionga.user.activity"
+RECS_TOPIC_OUT = "kionga.recs.results"
 
 _CATALOG = [
     {"item": "gpu-quota-upgrade", "audience": "pro"},
@@ -34,7 +34,7 @@ _POSITIVE_TERMS = {"thanks", "great", "love", "resolved", "perfect", "happy"}
 
 
 def get_features(entity_id: str, feature_view: str, *, client: httpx.Client) -> dict[str, Any]:
-    gateway = os.environ.get("MLAIOPS_FEATURE_GATEWAY_URL")
+    gateway = os.environ.get("KIONGA_FEATURE_GATEWAY_URL")
     if not gateway:
         return {}
     response = client.post(
@@ -80,12 +80,12 @@ def analyze_transcript(event: dict[str, Any], *, client: httpx.Client) -> dict[s
     """Analyze one call transcript. Routes through the deployed support agent
     when configured, otherwise deterministic keyword sentiment."""
     transcript = str(event.get("transcript", ""))
-    gateway = os.environ.get("MLAIOPS_URL")
+    gateway = os.environ.get("KIONGA_URL")
     agent_id = os.environ.get("CALLCENTER_AGENT_ID")
     if gateway and agent_id:
         response = client.post(
             f"{gateway.rstrip('/')}/api/v1/agents/{agent_id}/invoke",
-            headers={"Authorization": f"Bearer {os.environ['MLAIOPS_TOKEN']}"} if os.environ.get("MLAIOPS_TOKEN") else {},
+            headers={"Authorization": f"Bearer {os.environ['KIONGA_TOKEN']}"} if os.environ.get("KIONGA_TOKEN") else {},
             json={
                 "message": "Summarize sentiment and intent in one line: " + transcript,
                 "session_id": str(event.get("session_id", "")),

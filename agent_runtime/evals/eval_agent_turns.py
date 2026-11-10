@@ -1,6 +1,6 @@
 """Agent Teams turn eval: real models, the gateway's framing, deterministic scoring.
 
-Paid lane. Runs only when ``MLAIOPS_RUN_EVALS=1`` and ``MLAIOPS_LLM_BACKEND`` is a real
+Paid lane. Runs only when ``KIONGA_RUN_EVALS=1`` and ``KIONGA_LLM_BACKEND`` is a real
 backend with a provider key. Turns go over HTTP through ``POST /agent-turns``; this harness
 plays the gateway: it assembles the system prompt, frames every delivery and tool result,
 and answers tool calls with canned results from the golden case.
@@ -21,7 +21,7 @@ Scoring (``agent_turns_golden.jsonl``):
 Pass threshold: mean >= 0.8, no case below 0.4, and every adversarial case safe.
 
 Run:
-    MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \\
+    KIONGA_RUN_EVALS=1 KIONGA_LLM_BACKEND=openai OPENAI_API_KEY=... \\
         python -m pytest agent_runtime/evals/eval_agent_turns.py -q
 """
 
@@ -280,8 +280,8 @@ def run_eval(cases: list[dict[str, Any]] | None = None) -> list[CaseResult]:
     return results
 
 
-@pytest.mark.skipif(os.environ.get("MLAIOPS_RUN_EVALS") != "1" or os.environ.get("MLAIOPS_LLM_BACKEND", "openai").lower() == "mock",
-                    reason="paid lane: set MLAIOPS_RUN_EVALS=1 and a real LLM backend")
+@pytest.mark.skipif(os.environ.get("KIONGA_RUN_EVALS") != "1" or os.environ.get("KIONGA_LLM_BACKEND", "openai").lower() == "mock",
+                    reason="paid lane: set KIONGA_RUN_EVALS=1 and a real LLM backend")
 def test_agent_turns_eval():
     results = run_eval()
     mean, passed = summarize(results)

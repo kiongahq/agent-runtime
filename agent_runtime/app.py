@@ -10,23 +10,23 @@ Endpoints:
 
 Configuration (environment):
 
-- ``MLAIOPS_GRAPH_MODULE``   — ``package.module:attribute`` (required).
-- ``MLAIOPS_AGENT_ID``       — control-plane agent id for session reporting.
-- ``MLAIOPS_URL``            — gateway base URL for session reporting.
-- ``DATABASE_URL`` / ``MLAIOPS_CHECKPOINT_DSN`` — enables the PostgreSQL
+- ``KIONGA_GRAPH_MODULE``   — ``package.module:attribute`` (required).
+- ``KIONGA_AGENT_ID``       — control-plane agent id for session reporting.
+- ``KIONGA_URL``            — gateway base URL for session reporting.
+- ``DATABASE_URL`` / ``KIONGA_CHECKPOINT_DSN`` — enables the PostgreSQL
   checkpointer; falls back to in-memory checkpoints when absent.
-- ``MLAIOPS_LLM_BACKEND`` / ``MLAIOPS_LLM_MODEL`` / ``MLAIOPS_LLM_BASE_URL`` —
-  chat model selection (see ``mlaiops_sdk.llm``).
-- ``MLAIOPS_RUNTIME_AUTH`` — ``required`` or ``disabled``. Defaults to
+- ``KIONGA_LLM_BACKEND`` / ``KIONGA_LLM_MODEL`` / ``KIONGA_LLM_BASE_URL`` —
+  chat model selection (see ``kionga.llm``).
+- ``KIONGA_RUNTIME_AUTH`` — ``required`` or ``disabled``. Defaults to
   ``required`` when ``KIONGA_ENVIRONMENT=production`` and ``disabled``
   otherwise; ``disabled`` is refused in production.
-- ``MLAIOPS_INTERNAL_TOKEN`` — the shared gateway credential. With auth
+- ``KIONGA_INTERNAL_TOKEN`` — the shared gateway credential. With auth
   required, ``/invoke`` and ``/stream`` need ``Authorization: Bearer <token>``
   and the startup fails unless it is at least 16 characters.
 
 Caller identity: with auth required, the agent id and name come from the
-``X-MLAIOps-Agent-ID`` / ``X-MLAIOps-Agent-Name`` headers and the user from
-``X-MLAIOps-User-ID``, and they are trusted only because the request carries
+``X-Kionga-Agent-ID`` / ``X-Kionga-Agent-Name`` headers and the user from
+``X-Kionga-User-ID``, and they are trusted only because the request carries
 the gateway credential. With auth disabled (local development) the same
 headers and the body ``user_id`` are taken as given.
 """
@@ -48,8 +48,8 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from mlaiops_sdk.llm import build_chat_model
-from mlaiops_sdk.tracing import langfuse_handler
+from kionga.llm import build_chat_model
+from kionga.tracing import langfuse_handler
 
 from .graphs import GraphLoadError, build_graph, resolve_attribute
 from .reporting import Usage, report_session, usage_from_messages
@@ -91,18 +91,18 @@ class AuthConfig:
     @classmethod
     def from_env(cls) -> "AuthConfig":
         production = os.environ.get("KIONGA_ENVIRONMENT", "").strip().lower() == "production"
-        mode = os.environ.get("MLAIOPS_RUNTIME_AUTH", "").strip().lower() or ("required" if production else "disabled")
+        mode = os.environ.get("KIONGA_RUNTIME_AUTH", "").strip().lower() or ("required" if production else "disabled")
         if mode not in {"required", "disabled"}:
-            raise RuntimeError("MLAIOPS_RUNTIME_AUTH must be 'required' or 'disabled'")
+            raise RuntimeError("KIONGA_RUNTIME_AUTH must be 'required' or 'disabled'")
         if mode == "disabled":
             if production:
-                raise RuntimeError("MLAIOPS_RUNTIME_AUTH=disabled is not allowed when KIONGA_ENVIRONMENT=production")
+                raise RuntimeError("KIONGA_RUNTIME_AUTH=disabled is not allowed when KIONGA_ENVIRONMENT=production")
             logger.warning("agent runtime authentication is disabled; any caller can invoke the agent (local development only)")
             return cls(required=False)
-        token = os.environ.get("MLAIOPS_INTERNAL_TOKEN", "")
+        token = os.environ.get("KIONGA_INTERNAL_TOKEN", "")
         if len(token) < MIN_TOKEN_LENGTH:
             raise RuntimeError(
-                f"MLAIOPS_RUNTIME_AUTH=required needs MLAIOPS_INTERNAL_TOKEN of at least {MIN_TOKEN_LENGTH} characters"
+                f"KIONGA_RUNTIME_AUTH=required needs KIONGA_INTERNAL_TOKEN of at least {MIN_TOKEN_LENGTH} characters"
             )
         return cls(required=True, token=token)
 
@@ -118,8 +118,8 @@ class Caller:
 
 
 def _check_graph_module(request: Request) -> None:
-    expected = request.headers.get("X-MLAIOps-Graph-Module", "")
-    loaded = os.environ.get("MLAIOPS_GRAPH_MODULE", "")
+    expected = request.headers.get("X-Kionga-Graph-Module", "")
+    loaded = os.environ.get("KIONGA_GRAPH_MODULE", "")
     if expected and loaded and expected != loaded:
         raise HTTPException(status_code=409, detail="This runtime serves a different entrypoint; deploy a dedicated runtime for this agent")
 
@@ -143,9 +143,9 @@ def _resolve_caller(request: Request, authenticated: bool, body_user_id: str) ->
     if authenticated:
         # The gateway asserts the end user. A body user_id is caller-chosen
         # and is ignored, so it can never select another user's thread.
-        user_id = request.headers.get("X-MLAIOps-User-ID", "").strip()
+        user_id = request.headers.get("X-Kionga-User-ID", "").strip()
         if not user_id:
-            raise HTTPException(status_code=401, detail="X-MLAIOps-User-ID is required on gateway requests")
+            raise HTTPException(status_code=401, detail="X-Kionga-User-ID is required on gateway requests")
     return Caller(agent_id=agent_id, agent_name=agent_name, user_id=user_id, authenticated=authenticated)
 
 
@@ -157,11 +157,11 @@ def _agent_identity(request: Request | None = None) -> tuple[str, str]:
     the request is authenticated, or with auth disabled."""
     header_id = header_name = ""
     if request is not None:
-        header_id = request.headers.get("X-MLAIOps-Agent-ID", "")
-        header_name = request.headers.get("X-MLAIOps-Agent-Name", "")
+        header_id = request.headers.get("X-Kionga-Agent-ID", "")
+        header_name = request.headers.get("X-Kionga-Agent-Name", "")
     return (
-        header_id or os.environ.get("MLAIOPS_AGENT_ID", "unassigned"),
-        header_name or os.environ.get("MLAIOPS_AGENT_NAME", "agent"),
+        header_id or os.environ.get("KIONGA_AGENT_ID", "unassigned"),
+        header_name or os.environ.get("KIONGA_AGENT_NAME", "agent"),
     )
 
 
@@ -199,7 +199,7 @@ def _run_config(session_id: str, caller: Caller) -> dict[str, Any]:
 
 def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
     """Build the runtime app. Pass ``graph`` directly in tests; production
-    resolves ``MLAIOPS_GRAPH_MODULE`` during startup. ``auth`` defaults to
+    resolves ``KIONGA_GRAPH_MODULE`` during startup. ``auth`` defaults to
     :meth:`AuthConfig.from_env`, which raises on an unsafe configuration so
     the process fails before it listens."""
     auth = auth if auth is not None else AuthConfig.from_env()
@@ -210,16 +210,16 @@ def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
         if graph is not None:
             app.state.graph = graph
         else:
-            spec = os.environ.get("MLAIOPS_GRAPH_MODULE", "")
+            spec = os.environ.get("KIONGA_GRAPH_MODULE", "")
             if not spec:
-                raise GraphLoadError("MLAIOPS_GRAPH_MODULE is not set")
+                raise GraphLoadError("KIONGA_GRAPH_MODULE is not set")
             framework_managed = hasattr(resolve_attribute(spec), "kionga_framework")
             model = None if framework_managed else build_chat_model()
             checkpointer = None
             if framework_managed:
                 pass  # Adapter owns provider configuration and session persistence.
-            elif os.environ.get("MLAIOPS_CHECKPOINT_DSN") or os.environ.get("DATABASE_URL"):
-                from mlaiops_sdk.agents import get_langgraph_checkpointer
+            elif os.environ.get("KIONGA_CHECKPOINT_DSN") or os.environ.get("DATABASE_URL"):
+                from kionga.agents import get_langgraph_checkpointer
 
                 checkpointer_cm = get_langgraph_checkpointer()
                 checkpointer = await checkpointer_cm.__aenter__()
@@ -235,7 +235,7 @@ def create_app(graph: Any = None, *, auth: AuthConfig | None = None) -> FastAPI:
             if checkpointer_cm is not None:
                 await checkpointer_cm.__aexit__(None, None, None)
 
-    app = FastAPI(title="mlaiops-agent-runtime", lifespan=lifespan)
+    app = FastAPI(title="kionga-agent-runtime", lifespan=lifespan)
 
     def require_gateway(http_request: Request) -> None:
         # A route dependency without a body, so it runs before body

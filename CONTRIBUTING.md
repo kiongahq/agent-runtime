@@ -18,7 +18,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
 
-`requirements-dev.txt` installs `mlaiops-sdk[runtime,dev]` from the SDK release this
+`requirements-dev.txt` installs `kionga[runtime,dev]` from the SDK release this
 runtime is tested against. To work against a sibling SDK checkout instead:
 
 ```bash
@@ -55,7 +55,7 @@ Evals measure answer quality with a real LLM, so they cost money and never run i
 CI. Run them before you ship a change to an agent or a prompt:
 
 ```bash
-MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
+KIONGA_RUN_EVALS=1 KIONGA_LLM_BACKEND=openai OPENAI_API_KEY=... \
   python -m pytest -q agent_runtime/evals/eval_customer_support.py agent_runtime/evals/eval_native_graph.py \
   agent_runtime/evals/eval_agent_turns.py
 ```
@@ -64,7 +64,7 @@ The customer support eval scores each case in `agent_runtime/evals/golden.jsonl`
 with an LLM judge. It passes when the mean score is at least 0.7 and no case scores
 below 0.4. The Agent Teams turn eval has its own threshold in
 `agent_runtime/evals/README.md`, and holds a copy of the gateway's prompt and framing that
-must follow any change to them. Without `MLAIOPS_RUN_EVALS=1` the eval is skipped. Never run evals from
+must follow any change to them. Without `KIONGA_RUN_EVALS=1` the eval is skipped. Never run evals from
 an untrusted pull request with provider keys exposed.
 
 ## Build the image
@@ -109,8 +109,8 @@ Put the reason in a comment on the line before it, and end the flagged line with
 IDs):
 
 ```python
-# All interfaces inside the container; MLAIOPS_RUNTIME_HOST overrides.
-host=os.environ.get("MLAIOPS_RUNTIME_HOST", "0.0.0.0"),  # nosec B104
+# All interfaces inside the container; KIONGA_RUNTIME_HOST overrides.
+host=os.environ.get("KIONGA_RUNTIME_HOST", "0.0.0.0"),  # nosec B104
 ```
 
 If a test needs a fake credential that gitleaks reports, add the finding's

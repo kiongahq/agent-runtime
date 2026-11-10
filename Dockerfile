@@ -18,7 +18,7 @@ FROM python:${PYTHON_VERSION}-slim
 WORKDIR /app
 
 ARG SDK_SOURCE=release
-ARG SDK_VERSION=v0.2.0
+ARG SDK_VERSION=v0.3.0
 ARG SDK_EXTRAS=runtime
 COPY --from=sdk / /opt/sdk/
 RUN case "$SDK_SOURCE" in \
@@ -26,7 +26,7 @@ RUN case "$SDK_SOURCE" in \
                || { echo "SDK_SOURCE=local needs --build-context sdk=<sdk-python checkout>" >&2; exit 1; }; \
              pip install --no-cache-dir "/opt/sdk[${SDK_EXTRAS}]" ;; \
       release) pip install --no-cache-dir \
-               "mlaiops-sdk[${SDK_EXTRAS}] @ https://github.com/kiongahq/sdk-python/archive/refs/tags/${SDK_VERSION}.tar.gz" ;; \
+               "kionga[${SDK_EXTRAS}] @ https://github.com/kiongahq/sdk-python/archive/refs/tags/${SDK_VERSION}.tar.gz" ;; \
       *) echo "SDK_SOURCE must be release or local, got: $SDK_SOURCE" >&2; exit 1 ;; \
     esac && rm -rf /opt/sdk
 
@@ -54,7 +54,7 @@ COPY realtime /app/realtime
 ENV PYTHONPATH=/app \
     LANGFLOW_COMPONENTS_PATH=/app/agent_runtime/langflow_components \
     LANGFLOW_CONFIG_DIR=/tmp/kionga-langflow-runtime \
-    MLAIOPS_RUNTIME_PORT=9000
+    KIONGA_RUNTIME_PORT=9000
 
 # python -m agent_runtime.designer serves the Agent Designer playground on 9100.
 EXPOSE 9000 9100
