@@ -370,7 +370,7 @@ class EmbeddingRequest(_Closed):
 
 def embed(payload: EmbeddingRequest) -> list[float]:
     """The embedder designer knowledge nodes use, so a query matches what is indexed."""
-    from mlaiops_sdk.agents import HashingEmbedder
+    from kionga.agents import HashingEmbedder
 
     return HashingEmbedder(payload.dimensions).embed(payload.text)
 
@@ -401,18 +401,18 @@ async def read_body(request: Request, limit: int | None = None) -> bytes:
 
 
 def default_model_factory(timeout: float) -> Callable[[], Any]:
-    """The platform model, or the scripted one under ``MLAIOPS_LLM_BACKEND=mock``.
+    """The platform model, or the scripted one under ``KIONGA_LLM_BACKEND=mock``.
 
     Retries are the gateway's job: it persists ``waiting_retry`` and survives restarts,
     whereas a retry inside the SDK holds this request and hides the rate limit. The
     explicit timeout also stops the Anthropic SDK refusing large non-streaming calls.
     """
     def build() -> Any:
-        if os.environ.get("MLAIOPS_LLM_BACKEND", "").lower() == "mock":
+        if os.environ.get("KIONGA_LLM_BACKEND", "").lower() == "mock":
             from .agent_turn_mock import ScriptedTurnModel
 
             return ScriptedTurnModel()
-        from mlaiops_sdk.llm import build_chat_model
+        from kionga.llm import build_chat_model
 
         model = build_chat_model(max_retries=0, timeout=timeout)
         # The provider SDKs log full request bodies at DEBUG (OPENAI_LOG=debug, or a

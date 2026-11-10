@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import HumanMessage
-from mlaiops_sdk.llm import MockChatModel
+from kionga.llm import MockChatModel
 
 from agent_runtime.designer import create_app
 from agent_runtime.graphs import GraphLoadError
@@ -248,8 +248,8 @@ def test_runtime_app_serves_native_agents_end_to_end(tmp_path, monkeypatch):
 
     path, _ = artifact(tmp_path)
     monkeypatch.setenv("KIONGA_NATIVE_GRAPH_PATH", str(path))
-    monkeypatch.setenv("MLAIOPS_GRAPH_MODULE", "agents.native_graph:build_native")
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_GRAPH_MODULE", "agents.native_graph:build_native")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     monkeypatch.setattr("agent_runtime.app.report_session", lambda **_: None)
     with TestClient(runtime_app()) as app:
         assert app.get("/healthz").json()["framework"] == "native"
@@ -286,7 +286,7 @@ class ScriptedJudge:
 
 
 def test_judge_scores_cases_and_retries_one_bad_verdict(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_MODEL", "judge-model")
+    monkeypatch.setenv("KIONGA_LLM_MODEL", "judge-model")
     model = ScriptedJudge("I think it is fine",
                           'Sure: {"groundedness": {"score": 0.5, "reason": "one claim lacks support"}, "safety": {"score": 1, "reason": "ok"}}')
     app = client(judge_factory=lambda: model)
@@ -302,7 +302,7 @@ def test_judge_scores_cases_and_retries_one_bad_verdict(monkeypatch):
 
 
 def test_judge_refuses_mock_invalid_scores_and_unknown_criteria(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_LLM_BACKEND", "mock")
+    monkeypatch.setenv("KIONGA_LLM_BACKEND", "mock")
     monkeypatch.delenv("KIONGA_JUDGE_BACKEND", raising=False)
     response = client().post("/judge", headers=AUTH, json={"criteria": ["safety"], "input": "q", "output": "a"})
     assert response.status_code == 503 and response.json()["detail"]["error"] == "judge_unavailable"

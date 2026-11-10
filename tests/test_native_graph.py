@@ -6,7 +6,7 @@ from pathlib import Path
 
 import jsonschema
 import pytest
-from mlaiops_sdk.llm import MockChatModel
+from kionga.llm import MockChatModel
 
 from agent_runtime.native_graph import canonical_json, content_sha256, normalize, run_graph, validate_graph
 from agent_runtime.native_graph import conditions

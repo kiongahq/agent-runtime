@@ -1,6 +1,6 @@
 """Graph module loading.
 
-The runtime is configured with ``MLAIOPS_GRAPH_MODULE`` in the same
+The runtime is configured with ``KIONGA_GRAPH_MODULE`` in the same
 ``module.path:attribute`` form the SDK and the ``KiongaAgent`` CRD use. The
 attribute may be:
 

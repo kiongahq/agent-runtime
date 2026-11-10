@@ -47,7 +47,7 @@ never run in the commit gate; run them before ship and nightly.
   `tests/test_agent_turns_eval_harness.py` gates the framing and scoring with no model.
 
 ```bash
-MLAIOPS_RUN_EVALS=1 MLAIOPS_LLM_BACKEND=openai OPENAI_API_KEY=... \
+KIONGA_RUN_EVALS=1 KIONGA_LLM_BACKEND=openai OPENAI_API_KEY=... \
   python -m pytest python/agent_runtime/evals -q
 ```
 

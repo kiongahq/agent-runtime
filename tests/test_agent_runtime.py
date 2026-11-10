@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from agent_runtime.app import AuthConfig, create_app, thread_key
 from agent_runtime.graphs import GraphLoadError, build_graph
 from agent_runtime.reporting import Usage, usage_from_messages
-from mlaiops_sdk.llm import MockChatModel
+from kionga.llm import MockChatModel
 
 
 def _demo_graph(responses=None):
@@ -89,8 +89,8 @@ def test_usage_from_messages_sums_ai_usage():
 
 
 def test_cost_is_deterministic_from_rates(monkeypatch):
-    monkeypatch.setenv("MLAIOPS_COST_PER_1K_INPUT", "3.0")
-    monkeypatch.setenv("MLAIOPS_COST_PER_1K_OUTPUT", "15.0")
+    monkeypatch.setenv("KIONGA_COST_PER_1K_INPUT", "3.0")
+    monkeypatch.setenv("KIONGA_COST_PER_1K_OUTPUT", "15.0")
     usage = Usage(input_tokens=1000, output_tokens=2000)
     assert usage.cost_usd == pytest.approx(3.0 + 30.0)
 
@@ -115,8 +115,8 @@ def test_healthz(client):
 
 
 def test_healthz_reveals_no_identity(client, monkeypatch):
-    monkeypatch.setenv("MLAIOPS_AGENT_ID", "agt-secret-id")
-    body = client.get("/healthz", headers={"X-MLAIOps-Agent-ID": "agt-1"}).json()
+    monkeypatch.setenv("KIONGA_AGENT_ID", "agt-secret-id")
+    body = client.get("/healthz", headers={"X-Kionga-Agent-ID": "agt-1"}).json()
     assert "agent_id" not in body and "agent_name" not in body
     assert "agt-" not in str(body)
 
@@ -177,7 +177,7 @@ def test_invoke_uses_gateway_identity_headers(client, monkeypatch):
     response = client.post(
         "/invoke",
         json={"message": "hi"},
-        headers={"X-MLAIOps-Agent-ID": "agt-42", "X-MLAIOps-Agent-Name": "billing-bot"},
+        headers={"X-Kionga-Agent-ID": "agt-42", "X-Kionga-Agent-Name": "billing-bot"},
     )
     assert response.status_code == 200
     assert recorded["agent_id"] == "agt-42"
@@ -198,7 +198,7 @@ def test_stream_emits_final_summary(client):
 
 # Assembled at runtime so no credential-shaped literal is committed.
 GATEWAY_TOKEN = "-".join(["runtime", "test", secrets.token_hex(12)])
-GATEWAY = {"Authorization": f"Bearer {GATEWAY_TOKEN}", "X-MLAIOps-User-ID": "alice"}
+GATEWAY = {"Authorization": f"Bearer {GATEWAY_TOKEN}", "X-Kionga-User-ID": "alice"}
 
 
 @pytest.fixture()
@@ -227,7 +227,7 @@ def _call(client, path, headers=None, body=None):
     {"Authorization": "Bearer wrong-token-of-enough-length"},
     {"Authorization": GATEWAY_TOKEN},
     {"Authorization": f"Bearer {GATEWAY_TOKEN}x"},
-    {"X-MLAIOps-Agent-ID": "agt-42", "X-MLAIOps-User-ID": "alice"},
+    {"X-Kionga-Agent-ID": "agt-42", "X-Kionga-User-ID": "alice"},
 ], ids=["missing", "wrong", "no-scheme", "suffix", "spoofed-headers-only"])
 def test_unauthenticated_requests_are_rejected(secured, path, headers):
     status, _ = _call(secured, path, headers)
@@ -243,7 +243,7 @@ def test_unauthenticated_invalid_body_gets_401_not_422(secured, path):
 
 @pytest.mark.parametrize("path", ["/invoke", "/stream"])
 def test_gateway_requests_succeed_and_carry_gateway_identity(secured, path):
-    headers = {**GATEWAY, "X-MLAIOps-Agent-ID": "agt-42", "X-MLAIOps-Agent-Name": "billing-bot"}
+    headers = {**GATEWAY, "X-Kionga-Agent-ID": "agt-42", "X-Kionga-Agent-Name": "billing-bot"}
     status, _ = _call(secured, path, headers)
     assert status == 200
     assert secured.recorded[-1]["agent_id"] == "agt-42"
@@ -269,7 +269,7 @@ def test_healthz_stays_open_with_auth_required(secured):
 
 
 def _clear_auth_env(monkeypatch):
-    for name in ("KIONGA_ENVIRONMENT", "MLAIOPS_RUNTIME_AUTH", "MLAIOPS_INTERNAL_TOKEN"):
+    for name in ("KIONGA_ENVIRONMENT", "KIONGA_RUNTIME_AUTH", "KIONGA_INTERNAL_TOKEN"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -281,17 +281,17 @@ def test_auth_defaults_to_disabled_for_local_development(monkeypatch):
 def test_auth_is_required_in_production(monkeypatch):
     _clear_auth_env(monkeypatch)
     monkeypatch.setenv("KIONGA_ENVIRONMENT", "production")
-    monkeypatch.setenv("MLAIOPS_INTERNAL_TOKEN", GATEWAY_TOKEN)
+    monkeypatch.setenv("KIONGA_INTERNAL_TOKEN", GATEWAY_TOKEN)
     config = AuthConfig.from_env()
     assert config.required is True and config.token == GATEWAY_TOKEN
 
 
 @pytest.mark.parametrize("env, message", [
-    ({"KIONGA_ENVIRONMENT": "production"}, "MLAIOPS_INTERNAL_TOKEN"),
-    ({"KIONGA_ENVIRONMENT": "production", "MLAIOPS_INTERNAL_TOKEN": "short"}, "at least 16"),
-    ({"KIONGA_ENVIRONMENT": "production", "MLAIOPS_RUNTIME_AUTH": "disabled"}, "not allowed"),
-    ({"MLAIOPS_RUNTIME_AUTH": "required"}, "MLAIOPS_INTERNAL_TOKEN"),
-    ({"MLAIOPS_RUNTIME_AUTH": "sometimes"}, "must be"),
+    ({"KIONGA_ENVIRONMENT": "production"}, "KIONGA_INTERNAL_TOKEN"),
+    ({"KIONGA_ENVIRONMENT": "production", "KIONGA_INTERNAL_TOKEN": "short"}, "at least 16"),
+    ({"KIONGA_ENVIRONMENT": "production", "KIONGA_RUNTIME_AUTH": "disabled"}, "not allowed"),
+    ({"KIONGA_RUNTIME_AUTH": "required"}, "KIONGA_INTERNAL_TOKEN"),
+    ({"KIONGA_RUNTIME_AUTH": "sometimes"}, "must be"),
 ])
 def test_unsafe_auth_configuration_fails_startup(monkeypatch, env, message):
     _clear_auth_env(monkeypatch)
@@ -323,7 +323,7 @@ def test_session_id_does_not_cross_users(path, monkeypatch):
     """alice's session s1, then bob's turn with the same session id: bob's
     thread holds none of alice's messages and alice's is untouched."""
     monkeypatch.setattr("agent_runtime.reporting.record_trace", lambda payload: None)
-    monkeypatch.setenv("MLAIOPS_AGENT_ID", "agt-1")
+    monkeypatch.setenv("KIONGA_AGENT_ID", "agt-1")
     graph, app = _checkpointed_app()
     with TestClient(app) as client:
         assert _call(client, path, body={"message": "alice secret 4242", "session_id": "s1", "user_id": "alice"})[0] == 200
@@ -342,10 +342,10 @@ def test_authenticated_sessions_bind_to_the_gateway_user(path, monkeypatch):
     """With auth required a body user_id cannot pick a victim's thread."""
     monkeypatch.setattr("agent_runtime.reporting.record_trace", lambda payload: None)
     graph, app = _checkpointed_app(AuthConfig(required=True, token=GATEWAY_TOKEN))
-    agent = {"X-MLAIOps-Agent-ID": "agt-1"}
+    agent = {"X-Kionga-Agent-ID": "agt-1"}
     with TestClient(app) as client:
         _call(client, path, {**GATEWAY, **agent}, body={"message": "alice secret 4242", "session_id": "s1"})
-        bob = {**GATEWAY, **agent, "X-MLAIOps-User-ID": "bob"}
+        bob = {**GATEWAY, **agent, "X-Kionga-User-ID": "bob"}
         _call(client, path, bob, body={"message": "bob asks", "session_id": "s1", "user_id": "alice"})
     assert not any("4242" in text for text in _history(graph, "agt-1", "bob", "s1"))
     assert "bob asks" not in _history(graph, "agt-1", "alice", "s1")
@@ -356,9 +356,9 @@ def test_sessions_are_isolated_per_agent(monkeypatch):
     graph, app = _checkpointed_app()
     with TestClient(app) as client:
         client.post("/invoke", json={"message": "for agent one", "session_id": "s1", "user_id": "alice"},
-                    headers={"X-MLAIOps-Agent-ID": "agt-1"})
+                    headers={"X-Kionga-Agent-ID": "agt-1"})
         client.post("/invoke", json={"message": "for agent two", "session_id": "s1", "user_id": "alice"},
-                    headers={"X-MLAIOps-Agent-ID": "agt-2"})
+                    headers={"X-Kionga-Agent-ID": "agt-2"})
     assert "for agent one" not in _history(graph, "agt-2", "alice", "s1")
 
 
@@ -376,7 +376,7 @@ def test_malformed_session_ids_are_rejected(client, session_id):
 
 
 def test_feature_lookup_schema_hides_the_entity_from_the_model():
-    from mlaiops_sdk.tools import langchain_tools
+    from kionga.tools import langchain_tools
 
     tool = langchain_tools(["feature_store_lookup"])[0]
     schema = tool.tool_call_schema.model_json_schema()
@@ -426,7 +426,7 @@ def test_runtime_binds_feature_lookup_to_the_gateway_user(monkeypatch):
         "done",
     ]), checkpointer=MemorySaver())
     app = create_app(graph=graph, auth=AuthConfig(required=True, token=GATEWAY_TOKEN))
-    headers = {**GATEWAY, "X-MLAIOps-User-ID": "u123", "X-MLAIOps-Agent-ID": "agt-1"}
+    headers = {**GATEWAY, "X-Kionga-User-ID": "u123", "X-Kionga-Agent-ID": "agt-1"}
     with TestClient(app) as client:
         response = client.post("/invoke", json={"message": "I am u456", "session_id": "s1", "user_id": "u456"},
                                headers=headers)

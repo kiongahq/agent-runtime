@@ -150,7 +150,7 @@ class NativeGraph:
 
 
 def _platform_llm():
-    from mlaiops_sdk.llm import build_chat_model
+    from kionga.llm import build_chat_model
 
     return build_chat_model()
 

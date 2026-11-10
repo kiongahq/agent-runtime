@@ -17,7 +17,7 @@ locally.
 Every turn reports a session summary to the gateway (`POST /api/v1/traces`),
 which upserts the live session (turns, tokens, cost) shown in the console.
 The gateway attributes these reports to the narrow internal `service` role when
-`MLAIOPS_INTERNAL_TOKEN` is configured; do not reuse a user personal key.
+`KIONGA_INTERNAL_TOKEN` is configured; do not reuse a user personal key.
 
 ## Authentication
 
@@ -26,15 +26,15 @@ expects these headers on every turn:
 
 | Header | Meaning |
 | --- | --- |
-| `Authorization: Bearer $MLAIOPS_INTERNAL_TOKEN` | Gateway credential, compared in constant time; otherwise 401 |
-| `X-MLAIOps-User-ID` | The authenticated end user; required (401 without it). A body `user_id` is ignored |
-| `X-MLAIOps-Agent-ID` / `X-MLAIOps-Agent-Name` | Control-plane agent identity for session reporting |
-| `X-MLAIOps-Graph-Module` | Entry point the gateway expects; 409 on mismatch |
+| `Authorization: Bearer $KIONGA_INTERNAL_TOKEN` | Gateway credential, compared in constant time; otherwise 401 |
+| `X-Kionga-User-ID` | The authenticated end user; required (401 without it). A body `user_id` is ignored |
+| `X-Kionga-Agent-ID` / `X-Kionga-Agent-Name` | Control-plane agent identity for session reporting |
+| `X-Kionga-Graph-Module` | Entry point the gateway expects; 409 on mismatch |
 
 The credential check runs before body validation, so an unauthenticated caller
 gets 401 and never a schema error. Startup fails when auth is required and
-`MLAIOPS_INTERNAL_TOKEN` is unset or shorter than 16 characters, and when
-`MLAIOPS_RUNTIME_AUTH=disabled` is combined with `KIONGA_ENVIRONMENT=production`.
+`KIONGA_INTERNAL_TOKEN` is unset or shorter than 16 characters, and when
+`KIONGA_RUNTIME_AUTH=disabled` is combined with `KIONGA_ENVIRONMENT=production`.
 With auth disabled (the local default) every header and the body `user_id` are
 taken as given, which is safe only on a developer machine.
 
@@ -42,19 +42,19 @@ taken as given, which is safe only on a developer machine.
 
 | Variable | Meaning |
 | --- | --- |
-| `MLAIOPS_GRAPH_MODULE` | `package.module:attribute` — compiled graph, `StateGraph`, or `build(model, checkpointer)` factory |
-| `MLAIOPS_AGENT_ID` / `MLAIOPS_AGENT_NAME` | Control-plane identity for session reporting |
-| `MLAIOPS_URL` | Gateway base URL for session reporting |
-| `MLAIOPS_INTERNAL_TOKEN` | Shared gateway credential: verified on `/invoke` and `/stream` when auth is required; also the session-reporting credential |
-| `MLAIOPS_RUNTIME_AUTH` | `required` or `disabled`; defaults to `required` when `KIONGA_ENVIRONMENT=production`, `disabled` otherwise |
-| `KIONGA_ENVIRONMENT` | `production` makes auth required and refuses `MLAIOPS_RUNTIME_AUTH=disabled` |
-| `DATABASE_URL` or `MLAIOPS_CHECKPOINT_DSN` | Enables the PostgreSQL LangGraph checkpointer (in-memory otherwise) |
-| `MLAIOPS_LLM_BACKEND` / `MLAIOPS_LLM_MODEL` / `MLAIOPS_LLM_BASE_URL` | Chat model selection (`openai`, `anthropic`, `openai-compatible`, `mock`) |
+| `KIONGA_GRAPH_MODULE` | `package.module:attribute` — compiled graph, `StateGraph`, or `build(model, checkpointer)` factory |
+| `KIONGA_AGENT_ID` / `KIONGA_AGENT_NAME` | Control-plane identity for session reporting |
+| `KIONGA_URL` | Gateway base URL for session reporting |
+| `KIONGA_INTERNAL_TOKEN` | Shared gateway credential: verified on `/invoke` and `/stream` when auth is required; also the session-reporting credential |
+| `KIONGA_RUNTIME_AUTH` | `required` or `disabled`; defaults to `required` when `KIONGA_ENVIRONMENT=production`, `disabled` otherwise |
+| `KIONGA_ENVIRONMENT` | `production` makes auth required and refuses `KIONGA_RUNTIME_AUTH=disabled` |
+| `DATABASE_URL` or `KIONGA_CHECKPOINT_DSN` | Enables the PostgreSQL LangGraph checkpointer (in-memory otherwise) |
+| `KIONGA_LLM_BACKEND` / `KIONGA_LLM_MODEL` / `KIONGA_LLM_BASE_URL` | Chat model selection (`openai`, `anthropic`, `openai-compatible`, `mock`) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | Full-trace delivery to Langfuse |
-| `MLAIOPS_COST_PER_1K_INPUT` / `MLAIOPS_COST_PER_1K_OUTPUT` | Deterministic cost calculation (USD per 1k tokens) |
+| `KIONGA_COST_PER_1K_INPUT` / `KIONGA_COST_PER_1K_OUTPUT` | Deterministic cost calculation (USD per 1k tokens) |
 
 LLM calls should egress through the platform trace-proxy: set
-`MLAIOPS_LLM_BASE_URL` (or `OPENAI_BASE_URL`) to the proxy address so every
+`KIONGA_LLM_BASE_URL` (or `OPENAI_BASE_URL`) to the proxy address so every
 request/response pair is captured.
 
 ## Sessions
@@ -64,7 +64,7 @@ request/response pair is captured.
 `<agent_id>:<user_id>:<session_id>`, with the agent and user ids percent-encoded,
 so one user can never resume another user's thread, and one agent never reads
 another agent's, even with a known or guessed session id. With auth required the
-user is the gateway's `X-MLAIOps-User-ID`; a body `user_id` is ignored. Supplied
+user is the gateway's `X-Kionga-User-ID`; a body `user_id` is ignored. Supplied
 session ids must match `^[A-Za-z0-9][A-Za-z0-9._:@-]{0,199}$` (422 otherwise);
 when none is given the runtime generates a UUIDv4. The gateway session reports
 and the response keep the plain `session_id`.
@@ -78,7 +78,7 @@ multiple teams.
 
 The runtime does not execute model-generated code. Frameworks that do, such as
 NOOA, run that code inside the runtime process, which serves HTTP and holds
-provider keys and `MLAIOPS_INTERNAL_TOKEN`. Generated code there could read those
+provider keys and `KIONGA_INTERNAL_TOKEN`. Generated code there could read those
 secrets from `os.environ`, call internal services and exhaust the pod.
 
 Threat model for enabling it later: generated code is untrusted input. It needs
@@ -93,14 +93,14 @@ environment flag is not a sandbox.
 ## Run locally
 
 ```bash
-MLAIOPS_GRAPH_MODULE=agents.customer_support.graph:build \
-MLAIOPS_LLM_BACKEND=mock \
+KIONGA_GRAPH_MODULE=agents.customer_support.graph:build \
+KIONGA_LLM_BACKEND=mock \
 PYTHONPATH=python python -m agent_runtime
 ```
 
 ## Tests and evals
 
 - Gate tests: `python -m pytest python/tests/test_agent_runtime.py` (mock LLM, no network).
-- Evals (paid lane): `MLAIOPS_RUN_EVALS=1 python -m pytest python/agent_runtime/evals` — runs
+- Evals (paid lane): `KIONGA_RUN_EVALS=1 python -m pytest python/agent_runtime/evals` — runs
   the demo agent against golden questions with a real LLM and an LLM-as-judge
   scorer; threshold documented in `evals/README.md`.

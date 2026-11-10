@@ -2,7 +2,7 @@
 import os
 import sys
 
-from mlaiops_sdk.agent_adapters import (
+from kionga.agent_adapters import (
     AgentResult, AgnoAdapter, CallableAdapter, NooaAdapter, agent_factory,
 )
 

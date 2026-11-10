@@ -160,10 +160,10 @@ VIEWS = [{"name": "customer_profile", "ttl_seconds": 3600}, {"name": "static_vie
 
 def fake_keys():
     return FakeRedis({
-        b"mlaiops:features:customer_profile:entity_id=u1": -1,
-        b"mlaiops:features:customer_profile:entity_id=u2": 120,
-        b"mlaiops:features:static_view:entity_id=u1": -1,
-        b"mlaiops:features:removed_view:entity_id=u1": -1,
+        b"kionga:features:customer_profile:entity_id=u1": -1,
+        b"kionga:features:customer_profile:entity_id=u2": 120,
+        b"kionga:features:static_view:entity_id=u1": -1,
+        b"kionga:features:removed_view:entity_id=u1": -1,
         b"other:key": -1,
     })
 
@@ -171,10 +171,10 @@ def fake_keys():
 def test_ttl_sweep_sets_expiry_and_removes_orphans():
     client = fake_keys()
     report = sweep(client, VIEWS)
-    assert client.store[b"mlaiops:features:customer_profile:entity_id=u1"] == 3600
-    assert client.store[b"mlaiops:features:customer_profile:entity_id=u2"] == 120  # existing expiry kept
-    assert client.store[b"mlaiops:features:static_view:entity_id=u1"] == -1  # no TTL, untouched
-    assert b"mlaiops:features:removed_view:entity_id=u1" not in client.store
+    assert client.store[b"kionga:features:customer_profile:entity_id=u1"] == 3600
+    assert client.store[b"kionga:features:customer_profile:entity_id=u2"] == 120  # existing expiry kept
+    assert client.store[b"kionga:features:static_view:entity_id=u1"] == -1  # no TTL, untouched
+    assert b"kionga:features:removed_view:entity_id=u1" not in client.store
     assert b"other:key" in client.store
     assert (report.scanned, report.expiry_set, report.deleted, report.untouched) == (4, 1, 1, 2)
     assert report.by_view["removed_view"]["deleted"] == 1
@@ -188,7 +188,7 @@ def test_ttl_sweep_dry_run_and_keep_orphans():
     assert report.expiry_set == 1 and report.deleted == 1
     kept = fake_keys()
     sweep(kept, VIEWS, delete_orphans=False)
-    assert b"mlaiops:features:removed_view:entity_id=u1" in kept.store
+    assert b"kionga:features:removed_view:entity_id=u1" in kept.store
 
 
 def lineage_platform(calls, fail_online=False, legacy=False):
@@ -215,7 +215,7 @@ def test_materializer_reports_lineage_per_view():
     job.run()
     reports = [body for method, path, body in calls if path.endswith("/materializations")]
     assert len(reports) == 2
-    assert {report["source_dataset"] for report in reports} == {"s3://mlaiops-features/customer_profile", "s3://mlaiops-features/transaction_stats_5m"}
+    assert {report["source_dataset"] for report in reports} == {"s3://kionga-features/customer_profile", "s3://kionga-features/transaction_stats_5m"}
     assert all(report["run_id"] == job.run_id and report["status"] == "succeeded" and report["entity_count"] == 3 for report in reports)
 
 

@@ -292,7 +292,7 @@ class Executor:
             result = await _call(self.resources.invoke_connection(_required(node, "connection"), payload))
             return NodeResult("out", Value("json", result))
         if kind == "knowledge":
-            from mlaiops_sdk.agents import HashingEmbedder
+            from kionga.agents import HashingEmbedder
 
             base = _required(node, "knowledge_base")
             limit = _integer(node, "limit")

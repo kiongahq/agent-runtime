@@ -28,7 +28,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.message import MessagesState
 from langgraph.prebuilt import ToolNode
 
-from mlaiops_sdk.tools import langchain_tools, register_tool
+from kionga.tools import langchain_tools, register_tool
 
 SYSTEM_PROMPT = (
     "You are Kionga customer support. Use feature_store_lookup to fetch the "
@@ -67,7 +67,7 @@ def lookup_profile(entity_id: str) -> dict:
     Trusted code only: callers must have authorized ``entity_id``. Agents
     reach it through :func:`feature_store_lookup`, which binds it to the
     caller."""
-    gateway = os.environ.get("MLAIOPS_FEATURE_GATEWAY_URL")
+    gateway = os.environ.get("KIONGA_FEATURE_GATEWAY_URL")
     if gateway:
         response = httpx.post(
             f"{gateway.rstrip('/')}/get-online-features",
@@ -125,7 +125,7 @@ def build(model: Any = None, checkpointer: Any = None):
     to in-memory checkpoints (the runtime injects PostgreSQL in production).
     """
     if model is None:
-        from mlaiops_sdk.llm import build_chat_model
+        from kionga.llm import build_chat_model
 
         model = build_chat_model()
 

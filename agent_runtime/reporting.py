@@ -2,7 +2,7 @@
 
 Token counts come from LangChain ``usage_metadata`` on AI messages — never
 estimated in latent space. Cost is computed from configured per-1k rates
-(``MLAIOPS_COST_PER_1K_INPUT`` / ``MLAIOPS_COST_PER_1K_OUTPUT``), defaulting
+(``KIONGA_COST_PER_1K_INPUT`` / ``KIONGA_COST_PER_1K_OUTPUT``), defaulting
 to zero when unset so numbers are exact, not guessed.
 """
 
@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from mlaiops_sdk.tracing import record_trace
+from kionga.tracing import record_trace
 
 
 @dataclass(frozen=True)
@@ -22,8 +22,8 @@ class Usage:
 
     @property
     def cost_usd(self) -> float:
-        input_rate = float(os.environ.get("MLAIOPS_COST_PER_1K_INPUT", "0"))
-        output_rate = float(os.environ.get("MLAIOPS_COST_PER_1K_OUTPUT", "0"))
+        input_rate = float(os.environ.get("KIONGA_COST_PER_1K_INPUT", "0"))
+        output_rate = float(os.environ.get("KIONGA_COST_PER_1K_OUTPUT", "0"))
         return round(
             self.input_tokens / 1000 * input_rate + self.output_tokens / 1000 * output_rate,
             6,
