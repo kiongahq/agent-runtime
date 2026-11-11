@@ -1,5 +1,5 @@
 # The SDK release this runtime is built against (keep in step with SDK_VERSION
 # in the Dockerfile). For a sibling checkout instead:
 #   pip install -e "../sdk-python[runtime,dev]"
-kionga[runtime,dev] @ https://github.com/kiongahq/sdk-python/archive/refs/tags/v0.3.0.tar.gz
+kionga[runtime,dev] @ https://github.com/kiongahq/sdk-python/archive/refs/tags/v0.3.1.tar.gz
 jsonschema>=4.22  # contract schema checks in tests/test_native_graph.py

@@ -18,7 +18,7 @@ FROM python:${PYTHON_VERSION}-slim
 WORKDIR /app
 
 ARG SDK_SOURCE=release
-ARG SDK_VERSION=v0.3.0
+ARG SDK_VERSION=v0.3.1
 ARG SDK_EXTRAS=runtime
 COPY --from=sdk / /opt/sdk/
 RUN case "$SDK_SOURCE" in \
