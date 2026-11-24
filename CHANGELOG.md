@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/kiongahq/agent-runtime/compare/v0.2.0...v0.2.1) (2026-11-24)
+
+
+### Documentation
+
+* list self-hosted among the model backends ([53b4ddc](https://github.com/kiongahq/agent-runtime/commit/53b4ddc9c42c06709f3275c8504f48ed1f793051))
+
+
+### Build and dependencies
+
+* use SDK v0.3.1 ([#52](https://github.com/kiongahq/agent-runtime/issues/52)) ([9080dba](https://github.com/kiongahq/agent-runtime/commit/9080dba3a60bc6420d551bd0ab7612c321fb97b0))
+
 ## [0.2.0](https://github.com/kiongahq/agent-runtime/compare/v0.1.0...v0.2.0) (2026-11-10)
 
 
