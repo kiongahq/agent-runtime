@@ -49,7 +49,7 @@ taken as given, which is safe only on a developer machine.
 | `KIONGA_RUNTIME_AUTH` | `required` or `disabled`; defaults to `required` when `KIONGA_ENVIRONMENT=production`, `disabled` otherwise |
 | `KIONGA_ENVIRONMENT` | `production` makes auth required and refuses `KIONGA_RUNTIME_AUTH=disabled` |
 | `DATABASE_URL` or `KIONGA_CHECKPOINT_DSN` | Enables the PostgreSQL LangGraph checkpointer (in-memory otherwise) |
-| `KIONGA_LLM_BACKEND` / `KIONGA_LLM_MODEL` / `KIONGA_LLM_BASE_URL` | Chat model selection (`openai`, `anthropic`, `openai-compatible`, `mock`) |
+| `KIONGA_LLM_BACKEND` / `KIONGA_LLM_MODEL` / `KIONGA_LLM_BASE_URL` | Chat model selection (`mock`, `openai`, `anthropic`, `openai-compatible`, `self-hosted`) |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` | Full-trace delivery to Langfuse |
 | `KIONGA_COST_PER_1K_INPUT` / `KIONGA_COST_PER_1K_OUTPUT` | Deterministic cost calculation (USD per 1k tokens) |
 
